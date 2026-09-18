@@ -1,26 +1,23 @@
 # Architecture
 
-## Current
-Single Android app module. MainActivity hosts a small Compose setup/preview screen.
-A local SharedPreferences flag persists the initial accessibility preference. This is a starter, not the final architecture.
+## Implemented in 0.2.0
+- `MainActivity`: Arabic home, reading preferences, last successful page and bookmarks.
+- `ui/ReaderScreen`: page navigation, validated page jump, loading/error states, bookmark list and zoom/scroll controls.
+- `data/MadaniPage`: edition identity, page bounds, source URLs, Arabic/Persian/ASCII numeric input.
+- `data/PageRepository`: IO-dispatched HTTPS requests and persistent image storage in filesDir.
+- Unit tests exercise numeral parsing, invalid input, restoration boundaries and endpoint numbering.
 
-## Planned structure
-- core/model: edition, page, ayah reference, reciter and tafsir models.
-- core/data: repositories connecting validated remote content with Room and downloaded files.
-- core/audio: Media3 playback and media session.
-- feature/mushaf: fixed-page renderer, zoom transform and matching ayah bounds.
-- feature/accessible: reflowing text with per-ayah semantics.
-- feature/tafsir, feature/search, feature/downloads and feature/settings.
-- DataStore replaces the initial preference storage as settings expand.
+The repository uses one edition only: KSU/Ayat Hafs png_big. Each page change creates a separate keyed composable. Cancelled loads cannot display their image under a newer page number. Last position changes only when a page loads successfully.
 
-UI -> ViewModel -> Repository -> local data / remote adapter.
-Downloaded local data is the primary reading source. Remote failures must not erase valid local data.
-All views share the same ayah identity and edition. Reader implementations must not invent separate verse numbering.
+Files are decoded and checked for PNG signature, dimensions and size before saving with temporary-file rename. Corrupt cache entries are retried from the source. Storage errors do not prevent reading a downloaded image. No credentials or network calls run on the UI thread. Network operations have connection and read timeouts. Cancellation checks run between reads; a blocked read can last until its timeout.
 
-## Next engineering tasks
-1. Generate and commit the official Gradle 8.11.1 wrapper; build and lint with JDK 17 / SDK 35.
-2. Select and document a licensed reference edition and sample pages with bounds.
-3. Implement page rendering and compare with the reference before integrating all pages.
-4. Add local metadata, bookmarks and accessible verse reader.
-5. Add audio and tafsir, then offline downloads.
-6. Run device, accessibility and content verification before publishing.
+## Future structure
+- ViewModel and lifecycle-aware state flows as audio and verse-level navigation are added.
+- Room for validated local ayah metadata, text, tafsir and search.
+- DataStore migration from the initial SharedPreferences settings.
+- Media3 for recitation and media session.
+- A separate reflowing verse reader with per-ayah semantics.
+- Matching ayah bounds from the same page edition before implementing verse selection.
+- Versioned content manifests with authoritative checksums and explicit redistribution terms.
+
+No generated Quran text or OCR is used. No text rendering may claim Madani page fidelity until layout and fonts are verified against the reference.

@@ -6,7 +6,12 @@
 - Quran image generator: https://github.com/quran/quran.com-images — page generation and glyph bounds. Code and content have separate rights.
 - Quran Foundation: https://api-docs.quran.foundation/ — evaluate content access and authentication before integration.
 
-No production page endpoint or content redistribution license has been approved in this repository.
+## Current development source
+The 0.2.0 reader requests https://quran.ksu.edu.sa/png_big/{page}.png for pages 1–604.
+KSU describes its project as reading photographed Madani pages: https://quran.ksu.edu.sa/ . Its about section credits the King Fahd Complex for images: https://quran.ksu.edu.sa/index.php?l=ar .
+Pages 1, 2 and 604 were downloaded, PNG-decoded and visually inspected; all sampled images are 622×917. See source-samples.json. Images are fetched on demand and stored in the application's private files directory, not committed to the repository.
+This is a public HTTPS image source, not a formally documented API or an availability guarantee. No authentication key is required for the observed requests.
+Full edition review and confirmation of redistribution/use terms remain release gates. No commercial-use permission is asserted.
 
 ## Required dataset contract
 A versioned edition identifies riwayah, layout version, page count, source attribution and redistribution terms.

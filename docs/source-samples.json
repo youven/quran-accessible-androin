@@ -1,0 +1,36 @@
+{
+  "checked_on": "2026-09-18",
+  "scope": "Three images downloaded, decoded and visually inspected; not a full Quran audit. Hashes document these samples only, not an authoritative content manifest.",
+  "samples": [
+    {
+      "page": 1,
+      "url": "https://quran.ksu.edu.sa/png_big/1.png",
+      "sha256": "9e6def8f0b5ef74547ccfca26e7964450365b62686626b067dec42298a61dc86",
+      "dimensions": [
+        622,
+        917
+      ],
+      "bytes": 138178
+    },
+    {
+      "page": 2,
+      "url": "https://quran.ksu.edu.sa/png_big/2.png",
+      "sha256": "56fa75d96d686ab5b9fd996fe831f89c1e7aecfe1d398197014426a03ebe3a6a",
+      "dimensions": [
+        622,
+        917
+      ],
+      "bytes": 141165
+    },
+    {
+      "page": 604,
+      "url": "https://quran.ksu.edu.sa/png_big/604.png",
+      "sha256": "9f1e928414279531cc288d728ff17d94ce476cf008b1ee2523a39dc18e1a016a",
+      "dimensions": [
+        622,
+        917
+      ],
+      "bytes": 82795
+    }
+  ]
+}
