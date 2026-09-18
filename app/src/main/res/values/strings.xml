@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">القرآن الميسّر</string>
+    <string name="welcome">قراءة مريحة للجميع</string>
+    <string name="intro">اختر إعداد القراءة الذي يناسبك. يمكنك تغييره في أي وقت.</string>
+    <string name="easy_mode">القراءة الميسّرة</string>
+    <string name="easy_description">نصوص أكبر وأزرار واضحة</string>
+    <string name="preview">تجربة إعدادات القراءة</string>
+    <string name="sample">هذه معاينة لحجم نص الواجهة، وليست نصًا قرآنيًا.</string>
+    <string name="back">العودة للإعدادات</string>
+</resources>
