@@ -1,4 +1,27 @@
-# Verification of 0.3.0
+# Verification
+
+## 0.3.2: multi-glyph QCF regression (2026-09-19)
+
+Page 2 contains three word tokens with two QCF code points (FC46+FC47,
+FC48+FC49, FC67+FC68). Page 1 has only single-code-point tokens. The previous
+`Paint.hasGlyph(word.glyph)` call incorrectly requested a single ligature for
+each complete token. See the [Android contract](https://developer.android.com/reference/android/graphics/Paint#hasGlyph(java.lang.String)).
+
+`QcfGlyphCoverage` checks each Unicode code point without changing the display
+token. The new regression tests model this documented single-glyph predicate,
+exercise fixtures for pages 1, 2, 50, 187 and 604, and reject missing symbols and
+empty tokens. They also keep surrogate pairs intact. All five new tests passed
+using JUnit 4.13.2 on Java 17 (2026-09-19). These are JVM unit tests,
+not native Android Paint or on-device rendering tests. The downloaded page-2
+font cmap contains all code points in the page-2 API response.
+
+Device acceptance: install 0.3.2 over 0.3.1 and open pages 1, 2, 3, 50 and 604,
+including a repeat visit to page 2 with cached fonts. Check that all words and
+verse markers appear. Genuine glyph-validation failures now have a separate
+message from font-download failures. A full Android build and this device
+acceptance pass have not been run for 0.3.2 in this environment.
+
+## Previous 0.3.0 build verification
 
 Run `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug` with JDK17 and SDK35.
 

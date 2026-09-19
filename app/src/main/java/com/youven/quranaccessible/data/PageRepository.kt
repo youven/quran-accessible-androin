@@ -19,7 +19,7 @@ import kotlin.coroutines.coroutineContext
 data class LoadedPage(val page: TextPage, val font: Typeface, val basmalaFont: Typeface, val titleFont: Typeface, val chapterNames: Map<Int, String>)
 
 class PageLoadException(val part: Part, cause: Throwable) : IOException(cause) {
-    enum class Part { TEXT, PAGE_FONT, COMMON_FONT, CHAPTERS }
+    enum class Part { TEXT, PAGE_FONT, PAGE_GLYPHS, COMMON_FONT, CHAPTERS }
 }
 
 class PageRepository(private val temporaryDirectory: File) {
@@ -35,12 +35,15 @@ class PageRepository(private val temporaryDirectory: File) {
             pages[number]?.let { return@withLock it }
             val page = loadTextPage(number)
             val font = try {
-                (if (number == 1 && openingFont != null) openingFont!! else loadFont(number)).also { typeface ->
-                    val paint = Paint().apply { this.typeface = typeface }
-                    require(page.words.all { paint.hasGlyph(it.glyph) }) { "Font does not match page" }
-                }
+                if (number == 1 && openingFont != null) openingFont!! else loadFont(number)
             } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 throw PageLoadException(PageLoadException.Part.PAGE_FONT, error)
+            }
+            val paint = Paint().apply { typeface = font }
+            if (!page.words.all { QcfGlyphCoverage.supports(it.glyph, paint::hasGlyph) }) {
+                throw PageLoadException(PageLoadException.Part.PAGE_GLYPHS,
+                    IOException("Font is missing a QCF code point for page $number"))
             }
             val basmala = try {
                 openingFont ?: (if (number == 1) font else loadFont(1)).also { openingFont = it }

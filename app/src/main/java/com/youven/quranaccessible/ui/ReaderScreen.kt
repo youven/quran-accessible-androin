@@ -83,12 +83,13 @@ fun ReaderScreen(
                         val detail = when (current.part) {
                             PageLoadException.Part.TEXT -> "تعذّر تحميل نص الصفحة."
                             PageLoadException.Part.PAGE_FONT -> "تم تحميل النص، لكن تعذّر تحميل خط هذه الصفحة."
+                            PageLoadException.Part.PAGE_GLYPHS -> "تم تحميل الخط، لكن بعض رموز الصفحة غير متاحة فيه."
                             PageLoadException.Part.COMMON_FONT -> "تعذّر تحميل خط البسملة أو عناوين السور."
                             PageLoadException.Part.CHAPTERS -> "تعذّر تحميل أسماء السور."
                             null -> stringResource(R.string.load_error)
                         }
                         Text(detail, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-                        Text("سيحاول التطبيق ثلاث مرات، ثم يمكنك الضغط على إعادة المحاولة.", Modifier.padding(top = 8.dp))
+                        Text("يمكنك الضغط على إعادة المحاولة. إذا استمر الخطأ، أرسل رقم الصفحة وصورة الرسالة.", Modifier.padding(top = 8.dp))
                         Button(onClick = { retry++ }) { Text("إعادة المحاولة") }
                     }
                     is PageState.Ready -> if (accessible) {
