@@ -78,7 +78,7 @@ class PageRepository(private val temporaryDirectory: File) {
             coroutineContext.ensureActive()
             LoadedPage(page, font.typeface, basmala.typeface, titles.typeface, chapters).also {
                 pages[number] = it
-                while (pages.size > 3) pages.remove(pages.keys.first())
+                while (pages.size > 8) pages.remove(pages.keys.first())
             }
         }
     }

@@ -9,11 +9,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -89,8 +91,8 @@ fun ReaderScreen(
     var selectedReciter by rememberSaveable { mutableStateOf("أبو بكر الشاطري") }
     var isPlaying by rememberSaveable { mutableStateOf(false) }
 
-    // Auto-hiding bottom bar state
-    var bottomBarVisible by rememberSaveable { mutableStateOf(true) }
+    // Overlay auto-toggling bars state (Single tap on page toggles both)
+    var barsVisible by rememberSaveable { mutableStateOf(true) }
 
     // Fast scroll Rub' badge state
     var showRubBadge by remember { mutableStateOf(false) }
@@ -105,18 +107,78 @@ fun ReaderScreen(
         }
     }
 
-    val surahInfo = QuranMetadata.surahForPage(page)
-    val juzNumber = QuranMetadata.juzForPage(page)
-    val rubInfo = QuranMetadata.rubForPage(page)
-    val isBookmarked = page in bookmarks
+    // Horizontal Pager state for smooth swiping between Quran pages (1..604)
+    val pagerState = rememberPagerState(
+        initialPage = (page - 1).coerceIn(0, 603),
+        pageCount = { 604 }
+    )
 
-    Scaffold(
-        containerColor = Color(0xFFFAF8F5),
-        topBar = {
-            // --- Top App Bar (RTL: Back on Right, Titles in Center, Actions on Left) ---
+    val currentPage = pagerState.currentPage + 1
+
+    // Synchronize pager page change with app state
+    LaunchedEffect(pagerState.currentPage) {
+        val newPage = pagerState.currentPage + 1
+        if (newPage != page) {
+            onPageChange(newPage)
+        }
+    }
+
+    // Synchronize external page change (e.g. from jump dialog) with pager
+    LaunchedEffect(page) {
+        val target = (page - 1).coerceIn(0, 603)
+        if (pagerState.currentPage != target) {
+            pagerState.scrollToPage(target)
+        }
+    }
+
+    val surahInfo = QuranMetadata.surahForPage(currentPage)
+    val juzNumber = QuranMetadata.juzForPage(currentPage)
+    val rubInfo = QuranMetadata.rubForPage(currentPage)
+    val isBookmarked = currentPage in bookmarks
+
+    // Full screen root Box with Quran page underneath and overlay bars on top
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFFAF8F5))
+    ) {
+        // --- 1. Quran Pages Horizontal Pager (Fills 100% of the screen, Edge-to-Edge) ---
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            beyondViewportPageCount = 1,
+            key = { it }
+        ) { pageIndex ->
+            val pageNum = pageIndex + 1
+            QuranPageView(
+                pageNumber = pageNum,
+                repository = repository,
+                accessible = accessible,
+                textSize = textSize,
+                onPageLoaded = { onPageLoaded(pageNum) },
+                onTap = { barsVisible = !barsVisible },
+                onFastScroll = { rubBadgeTriggerTime = System.currentTimeMillis() },
+                onScrollDirection = { dy ->
+                    if (dy > 14f) barsVisible = false
+                    else if (dy < -14f) barsVisible = true
+                },
+                onRegisterView = { v ->
+                    if (pageNum == currentPage) view = v
+                }
+            )
+        }
+
+        // --- 2. Top Bar Overlay (Z-Index above page, toggled on page click) ---
+        AnimatedVisibility(
+            visible = barsVisible,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
             Surface(
-                color = Color(0xFFFAF8F5),
-                shadowElevation = 2.dp
+                color = Color(0xFFFAF8F5).copy(alpha = 0.96f),
+                shadowElevation = 3.dp,
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier
@@ -125,16 +187,16 @@ fun ReaderScreen(
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Right: Back Button (points right in RTL)
+                    // Right: Back Button
                     IconButton(onClick = onBack) {
                         Icon(
-                            imageVector = Icons.Default.ArrowForward,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = "رجوع إلى الشاشة الرئيسية",
                             tint = Color(0xFF1C2520)
                         )
                     }
 
-                    // Center: Surah Name & Page/Juz Info
+                    // Center: Surah Name & Page/Juz Info (Clickable for Quick Jump)
                     Column(
                         modifier = Modifier
                             .weight(1f)
@@ -148,18 +210,17 @@ fun ReaderScreen(
                             color = Color(0xFF1C2520)
                         )
                         Text(
-                            text = "صفحة ${QuranMetadata.toArabicDigits(page)}، جزء ${QuranMetadata.toArabicDigits(juzNumber)}",
+                            text = "صفحة ${QuranMetadata.toArabicDigits(currentPage)}، جزء ${QuranMetadata.toArabicDigits(juzNumber)}",
                             fontSize = 13.sp,
                             color = Color(0xFF6B7280)
                         )
                     }
 
-                    // Left Action Icons
+                    // Left: Actions
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        // Bookmark Toggle Icon
                         IconButton(onClick = onToggleBookmark) {
                             Icon(
                                 imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -168,7 +229,6 @@ fun ReaderScreen(
                             )
                         }
 
-                        // Display / Reading Mode Icon (Globe / Language)
                         IconButton(onClick = { showDisplayDialog = true }) {
                             Icon(
                                 imageVector = Icons.Default.Language,
@@ -177,7 +237,6 @@ fun ReaderScreen(
                             )
                         }
 
-                        // Overflow Menu Icon (⋮)
                         Box {
                             IconButton(onClick = { overflowMenuExpanded = true }) {
                                 Icon(
@@ -200,300 +259,127 @@ fun ReaderScreen(
                     }
                 }
             }
-        },
-        bottomBar = {
-            // --- Animated Auto-hiding Bottom Bar ---
-            AnimatedVisibility(
-                visible = bottomBarVisible,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
-            ) {
-                Surface(
-                    color = Color(0xFFFAF8F5),
-                    shadowElevation = 8.dp,
-                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Top Row: Reciter Name & Audio Play/Pause Button
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { showReciterDialog = true }
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.RecordVoiceOver,
-                                    contentDescription = null,
-                                    tint = Color(0xFF0D8A74),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = selectedReciter,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color(0xFF1C2520)
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = null,
-                                    tint = Color(0xFF6B7280),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
+        }
 
-                            FilledIconButton(
-                                onClick = { isPlaying = !isPlaying },
-                                colors = IconButtonDefaults.filledIconButtonColors(
-                                    containerColor = Color(0xFF0D8A74)
-                                ),
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = if (isPlaying) "إيقاف مؤقت" else "تشغيل التلاوة",
-                                    tint = Color.White
-                                )
-                            }
+        // --- 3. Bottom Bar Overlay (Z-Index above page, streamlined without previous/next buttons) ---
+        AnimatedVisibility(
+            visible = barsVisible,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Surface(
+                color = Color(0xFFFAF8F5).copy(alpha = 0.96f),
+                shadowElevation = 8.dp,
+                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Reciter selector
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { showReciterDialog = true }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.RecordVoiceOver,
+                                contentDescription = null,
+                                tint = Color(0xFF0D8A74),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = selectedReciter,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF1C2520)
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null,
+                                tint = Color(0xFF6B7280),
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
 
-                        // Bottom Row: Navigation Buttons (السابقة / التالية) & Page Indicator
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        // Page indicator badge (Clickable to jump)
+                        Surface(
+                            color = Color(0xFFE8F5F2),
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier.clickable { showJumpDialog = true }
                         ) {
-                            OutlinedButton(
-                                onClick = { onPageChange(page - 1) },
-                                enabled = page > 1,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("السابقة", fontSize = 15.sp)
-                            }
+                            Text(
+                                text = "${QuranMetadata.toArabicDigits(currentPage)} / ٦٠٤",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0D8A74),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            )
+                        }
 
-                            TextButton(
-                                onClick = { showJumpDialog = true },
-                                modifier = Modifier.height(44.dp)
-                            ) {
-                                Text(
-                                    text = "${QuranMetadata.toArabicDigits(page)} / ٦٠٤",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF0D8A74)
-                                )
-                            }
-
-                            Button(
-                                onClick = { onPageChange(page + 1) },
-                                enabled = page < 604,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D8A74))
-                            ) {
-                                Text("التالية", fontSize = 15.sp)
-                            }
+                        // Audio Play / Pause Button
+                        FilledIconButton(
+                            onClick = { isPlaying = !isPlaying },
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = Color(0xFF0D8A74)
+                            ),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlaying) "إيقاف مؤقت" else "تشغيل التلاوة",
+                                tint = Color.White
+                            )
                         }
                     }
                 }
             }
         }
-    ) { innerPadding ->
-        Box(
+
+        // --- 4. Floating Rub' el Hizb Badge on Fast Scroll ---
+        AnimatedVisibility(
+            visible = showRubBadge,
+            enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
+            exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
             modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
+                .align(Alignment.BottomCenter)
+                .padding(bottom = if (barsVisible) 80.dp else 24.dp)
         ) {
-            key(page) {
-                var retry by remember { mutableIntStateOf(0) }
-                val state by produceState<PageState>(PageState.Loading, retry) {
-                    value = PageState.Loading
-                    value = try {
-                        PageState.Ready(repository.load(page))
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (error: PageLoadException) {
-                        PageState.Failed(error.part)
-                    } catch (_: Exception) {
-                        PageState.Failed(null)
-                    }
-                }
-
-                val onLoaded by rememberUpdatedState(onPageLoaded)
-                LaunchedEffect(state) {
-                    if (state is PageState.Ready) onLoaded(page)
-                }
-
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    when (val current = state) {
-                        PageState.Loading -> Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            CircularProgressIndicator(color = Color(0xFF0D8A74))
-                            Text(
-                                "جارٍ تحميل نص الصفحة وخطها…",
-                                color = Color(0xFF6B7280),
-                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
-                            )
-                        }
-
-                        is PageState.Failed -> Column(
-                            modifier = Modifier
-                                .verticalScroll(rememberScrollState())
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            val detail = when (current.part) {
-                                PageLoadException.Part.TEXT -> "تعذّر تحميل نص الصفحة."
-                                PageLoadException.Part.PAGE_FONT -> "تم تحميل النص، لكن تعذّر تحميل خط هذه الصفحة."
-                                PageLoadException.Part.PAGE_GLYPHS -> "تم تحميل الخط، لكن بعض رموز الصفحة غير متاحة فيه."
-                                PageLoadException.Part.COMMON_FONT -> "تعذّر تحميل خط البسملة أو عناوين السور."
-                                PageLoadException.Part.CHAPTERS -> "تعذّر تحميل أسماء السور."
-                                null -> stringResource(R.string.load_error)
-                            }
-                            Text(
-                                detail,
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
-                            )
-                            Text(
-                                "يمكنك الضغط على إعادة المحاولة. إذا استمر الخطأ، أرسل رقم الصفحة وصورة الرسالة.",
-                                fontSize = 14.sp,
-                                color = Color(0xFF6B7280)
-                            )
-                            Button(
-                                onClick = { retry++ },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D8A74))
-                            ) {
-                                Text("إعادة المحاولة")
-                            }
-                        }
-
-                        is PageState.Ready -> {
-                            if (accessible) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .verticalScroll(rememberScrollState())
-                                        .clickable { bottomBarVisible = !bottomBarVisible }
-                                        .padding(20.dp),
-                                    verticalArrangement = Arrangement.spacedBy(24.dp)
-                                ) {
-                                    current.result.page.words.groupBy { it.verse }.forEach { (verse, words) ->
-                                        Text(
-                                            words.joinToString(" ") { it.text },
-                                            fontSize = textSize.sp,
-                                            lineHeight = (textSize * 1.9).sp,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                        Text(
-                                            "${current.result.chapterNames[verse.substringBefore(':').toInt()]} · آية ${verse.substringAfter(':')}",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = Color(0xFF0D8A74)
-                                        )
-                                    }
-                                }
-                            } else {
-                                AndroidView(
-                                    factory = { ctx ->
-                                        MushafTextView(ctx).also { v ->
-                                            view = v
-                                            v.onScrollListener = { dx, dy ->
-                                                if (abs(dy) > 15f || abs(dx) > 15f) {
-                                                    rubBadgeTriggerTime = System.currentTimeMillis()
-                                                }
-                                                if (dy > 12f) {
-                                                    bottomBarVisible = false
-                                                } else if (dy < -12f) {
-                                                    bottomBarVisible = true
-                                                }
-                                            }
-                                            v.onTapListener = {
-                                                bottomBarVisible = !bottomBarVisible
-                                            }
-                                            v.bind(current.result)
-                                        }
-                                    },
-                                    update = { v ->
-                                        v.bind(current.result)
-                                        view = v
-                                        v.onScrollListener = { dx, dy ->
-                                            if (abs(dy) > 15f || abs(dx) > 15f) {
-                                                rubBadgeTriggerTime = System.currentTimeMillis()
-                                            }
-                                            if (dy > 12f) {
-                                                bottomBarVisible = false
-                                            } else if (dy < -12f) {
-                                                bottomBarVisible = true
-                                            }
-                                        }
-                                        v.onTapListener = {
-                                            bottomBarVisible = !bottomBarVisible
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // --- Floating Rub' el Hizb Badge on Fast Scroll ---
-            AnimatedVisibility(
-                visible = showRubBadge,
-                enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
-                exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 24.dp)
+            Surface(
+                color = Color(0xF01C2520),
+                shape = RoundedCornerShape(24.dp),
+                shadowElevation = 6.dp
             ) {
-                Surface(
-                    color = Color(0xF01C2520),
-                    shape = RoundedCornerShape(24.dp),
-                    shadowElevation = 6.dp
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Brightness7,
-                            contentDescription = null,
-                            tint = Color(0xFF0D8A74),
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = "ربع الحزب ${QuranMetadata.toArabicDigits(rubInfo.rubNumber)} (${rubInfo.surahName})",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.Brightness7,
+                        contentDescription = null,
+                        tint = Color(0xFF0D8A74),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "ربع الحزب ${QuranMetadata.toArabicDigits(rubInfo.rubNumber)} (${rubInfo.surahName})",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }
@@ -689,3 +575,174 @@ fun ReaderScreen(
         )
     }
 }
+
+@Composable
+private fun QuranPageView(
+    pageNumber: Int,
+    repository: PageRepository,
+    accessible: Boolean,
+    textSize: Int,
+    onPageLoaded: () -> Unit,
+    onTap: () -> Unit,
+    onFastScroll: () -> Unit,
+    onScrollDirection: (Float) -> Unit,
+    onRegisterView: (MushafTextView) -> Unit
+) {
+    var retry by remember(pageNumber) { mutableIntStateOf(0) }
+    val state by produceState<PageState>(PageState.Loading, pageNumber, retry) {
+        value = PageState.Loading
+        value = try {
+            PageState.Ready(repository.load(pageNumber))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (error: PageLoadException) {
+            PageState.Failed(error.part)
+        } catch (_: Exception) {
+            PageState.Failed(null)
+        }
+    }
+
+    val onLoaded by rememberUpdatedState(onPageLoaded)
+    LaunchedEffect(state) {
+        if (state is PageState.Ready) onLoaded()
+    }
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        when (val current = state) {
+            PageState.Loading -> Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                CircularProgressIndicator(color = Color(0xFF0D8A74))
+                Text(
+                    "جارٍ تحميل نص الصفحة وخطها…",
+                    color = Color(0xFF6B7280),
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                )
+            }
+
+            is PageState.Failed -> Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                val detail = when (current.part) {
+                    PageLoadException.Part.TEXT -> "تعذّر تحميل نص الصفحة."
+                    PageLoadException.Part.PAGE_FONT -> "تم تحميل النص، لكن تعذّر تحميل خط هذه الصفحة."
+                    PageLoadException.Part.PAGE_GLYPHS -> "تم تحميل الخط، لكن بعض رموز الصفحة غير متاحة فيه."
+                    PageLoadException.Part.COMMON_FONT -> "تعذّر تحميل خط البسملة أو عناوين السور."
+                    PageLoadException.Part.CHAPTERS -> "تعذّر تحميل أسماء السور."
+                    null -> stringResource(R.string.load_error)
+                }
+                Text(
+                    detail,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                )
+                Text(
+                    "يمكنك الضغط على إعادة المحاولة. إذا استمر الخطأ، أرسل رقم الصفحة وصورة الرسالة.",
+                    fontSize = 14.sp,
+                    color = Color(0xFF6B7280)
+                )
+                Button(
+                    onClick = { retry++ },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D8A74))
+                ) {
+                    Text("إعادة المحاولة")
+                }
+            }
+
+            is PageState.Ready -> {
+                if (accessible) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .clickable { onTap() }
+                            .padding(horizontal = 14.dp, vertical = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(20.dp)
+                    ) {
+                        current.result.page.starts.forEach { start ->
+                            val surahName = current.result.chapterNames[start.chapter] ?: ""
+                            Surface(
+                                color = Color(0xFFF7EED3),
+                                shape = RoundedCornerShape(10.dp),
+                                shadowElevation = 1.dp,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "سورة $surahName",
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1C2520)
+                                    )
+                                    Text(
+                                        text = "بداية السورة",
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF8A6218)
+                                    )
+                                }
+                            }
+                        }
+
+                        current.result.page.words.groupBy { it.verse }.forEach { (verse, words) ->
+                            Text(
+                                words.joinToString(" ") { it.text },
+                                fontSize = textSize.sp,
+                                lineHeight = (textSize * 1.85).sp,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                "${current.result.chapterNames[verse.substringBefore(':').toInt()]} · آية ${verse.substringAfter(':')}",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Color(0xFF0D8A74)
+                            )
+                        }
+                    }
+                } else {
+                    AndroidView(
+                        factory = { ctx ->
+                            MushafTextView(ctx).also { v ->
+                                onRegisterView(v)
+                                v.onScrollListener = { dx, dy ->
+                                    if (abs(dy) > 15f || abs(dx) > 15f) {
+                                        onFastScroll()
+                                    }
+                                    onScrollDirection(dy)
+                                }
+                                v.onTapListener = onTap
+                                v.bind(current.result)
+                            }
+                        },
+                        update = { v ->
+                            v.bind(current.result)
+                            onRegisterView(v)
+                            v.onScrollListener = { dx, dy ->
+                                if (abs(dy) > 15f || abs(dx) > 15f) {
+                                    onFastScroll()
+                                }
+                                onScrollDirection(dy)
+                            }
+                            v.onTapListener = onTap
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
+    }
+}
+
