@@ -1,7 +1,7 @@
 package com.youven.quranaccessible.data
 
-import android.graphics.Paint
 import android.graphics.Typeface
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -10,6 +10,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import org.json.JSONArray
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -22,12 +23,15 @@ class PageLoadException(val part: Part, cause: Throwable) : IOException(cause) {
     enum class Part { TEXT, PAGE_FONT, PAGE_GLYPHS, COMMON_FONT, CHAPTERS }
 }
 
+private data class CheckedFont(val typeface: Typeface, val coverage: FontCoverage)
+private class MissingFontSymbol : IOException("Font is missing a required page symbol")
+
 class PageRepository(private val temporaryDirectory: File) {
     private val mutex = Mutex()
     private val pages = LinkedHashMap<Int, LoadedPage>()
     private var names: Map<Int, String>? = null
-    private var openingFont: Typeface? = null
-    private var titleFont: Typeface? = null
+    private var openingFont: CheckedFont? = null
+    private var titleFont: CheckedFont? = null
 
     suspend fun load(number: Int): LoadedPage = withContext(Dispatchers.IO) {
         require(number in 1..604)
@@ -35,101 +39,146 @@ class PageRepository(private val temporaryDirectory: File) {
             pages[number]?.let { return@withLock it }
             val page = loadTextPage(number)
             val font = try {
-                if (number == 1 && openingFont != null) openingFont!! else loadFont(number)
+                if (number == 1 && openingFont?.let { f -> page.words.all { f.coverage.supports(it.glyph) } } == true) openingFont!!
+                else loadFont(number, page.words.map { it.glyph })
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                throw PageLoadException(PageLoadException.Part.PAGE_FONT, error)
-            }
-            val paint = Paint().apply { typeface = font }
-            if (!page.words.all { QcfGlyphCoverage.supports(it.glyph, paint::hasGlyph) }) {
-                throw PageLoadException(PageLoadException.Part.PAGE_GLYPHS,
-                    IOException("Font is missing a QCF code point for page $number"))
+                val part = if (error is MissingFontSymbol) PageLoadException.Part.PAGE_GLYPHS
+                    else PageLoadException.Part.PAGE_FONT
+                throw PageLoadException(part, error)
             }
             val basmala = try {
                 openingFont ?: (if (number == 1) font else loadFont(1)).also { openingFont = it }
             } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 throw PageLoadException(PageLoadException.Part.COMMON_FONT, error)
             }
             val titles = try {
                 titleFont ?: loadTypeface(
                     "surah-names-v1.ttf",
-                    "https://verses.quran.foundation/fonts/quran/surah-names/v1/sura_names.ttf"
+                    "https://verses.quran.foundation/fonts/quran/surah-names/v1/sura_names.ttf",
+                    listOf("\uE000") + (1..114).map { (0xE000 + it.toString().toInt(16)).toChar().toString() }
                 ).also { titleFont = it }
             } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 throw PageLoadException(PageLoadException.Part.COMMON_FONT, error)
             }
-            val titlePaint = Paint().apply { typeface = titles }
-            require(titlePaint.hasGlyph("\uE000") && page.starts.all {
-                titlePaint.hasGlyph((0xE000 + it.chapter.toString().toInt(16)).toChar().toString())
-            }) { "Missing chapter title glyph" }
             val chapters = try {
                 names ?: run {
-                    val bytes = cachedDownload("chapters-v1.json", "https://api.quran.com/api/v4/chapters", 200_000)
-                    val list = JSONObject(bytes.toString(Charsets.UTF_8)).getJSONArray("chapters")
-                    require(list.length() == 114)
-                    (0 until list.length()).associate { i -> list.getJSONObject(i).let { it.getInt("id") to it.getString("name_arabic") } }.also { names = it }
+                    cachedValue("chapters-v1.json", "https://api.quran.com/api/v4/chapters", 200_000) { bytes ->
+                        val list = JSONObject(bytes.toString(Charsets.UTF_8)).getJSONArray("chapters")
+                        require(list.length() == 114)
+                        (0 until list.length()).associate { i -> list.getJSONObject(i).let { it.getInt("id") to it.getString("name_arabic") } }
+                    }.also { names = it }
                 }
             } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 throw PageLoadException(PageLoadException.Part.CHAPTERS, error)
             }
             coroutineContext.ensureActive()
-            LoadedPage(page, font, basmala, titles, chapters).also {
+            LoadedPage(page, font.typeface, basmala.typeface, titles.typeface, chapters).also {
                 pages[number] = it
                 while (pages.size > 3) pages.remove(pages.keys.first())
             }
         }
     }
 
-    private suspend fun loadTextPage(number: Int): TextPage = try {
+    private suspend fun loadTextPage(number: Int): TextPage {
+        return try {
+            val cacheName = "page-$number-complete-v2.json"
+            val cached = File(temporaryDirectory, cacheName)
+            if (cached.isFile) {
+                try {
+                    require(cached.length() in 1..4_000_000L)
+                    val array = JSONArray(cached.readText())
+                    return PageParser.parse(number, (0 until array.length()).map(array::getString))
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { cached.delete() }
+            }
+            val address = "https://api.quran.com/api/v4/verses/by_page/$number?words=true&word_fields=code_v2,text_uthmani&per_page=50&mushaf=1"
+            var responses = fetchTextBatches(address)
+            val result = try { PageParser.parse(number, responses) }
+            catch (invalid: IllegalArgumentException) {
+                val chapters = PageRecovery.chapters(responses)
+                val restored = chapters.associateWith { chapter ->
+                    fetchTextBatches("https://api.quran.com/api/v4/verses/by_chapter/$chapter?words=true&word_fields=code_v2,text_uthmani&per_page=50")
+                }
+                responses = listOf(PageRecovery.rebuild(number, responses, restored))
+                PageParser.parse(number, responses)
+            }
+            storeValidated(cacheName, JSONArray(responses).toString().toByteArray(Charsets.UTF_8))
+            result
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            Log.w("QuranPages", "Page $number text could not be validated", error)
+            throw PageLoadException(PageLoadException.Part.TEXT, error)
+        }
+    }
+
+    private suspend fun fetchTextBatches(address: String): List<String> {
         val responses = mutableListOf<String>()
         var next = 1
         do {
             coroutineContext.ensureActive()
-            val address = "https://api.quran.com/api/v4/verses/by_page/$number?words=true&word_fields=code_v2,text_uthmani&per_page=50&mushaf=1&page=$next"
-            val body = cachedDownload("page-$number-$next-v1.json", address, 4_000_000).toString(Charsets.UTF_8)
+            val body = download("$address&page=$next", 4_000_000).toString(Charsets.UTF_8)
             responses += body
             val pagination = JSONObject(body).getJSONObject("pagination")
+            require(pagination.getInt("current_page") == next)
             val following = pagination.optInt("next_page", 0)
             require(following == 0 || following == next + 1)
             next = following
             require(responses.size <= 20)
         } while (next != 0)
-        PageParser.parse(number, responses)
-    } catch (error: Exception) {
-        if (error is CancellationException) throw error
-        temporaryDirectory.listFiles { file -> file.name.startsWith("page-$number-") }
-            ?.forEach(File::delete)
-        throw PageLoadException(PageLoadException.Part.TEXT, error)
+        return responses
     }
 
-    private suspend fun loadFont(page: Int): Typeface =
-        loadTypeface("qcf-v2-page-$page.ttf", MadaniPage.fontUrl(page))
+    private suspend fun loadFont(page: Int, tokens: List<String> = listOf("\uFC41", "\uFC42", "\uFC43", "\uFC44")): CheckedFont =
+        loadTypeface("qcf-v2-page-$page.ttf", MadaniPage.fontUrl(page), tokens)
 
-    private suspend fun loadTypeface(cacheName: String, address: String): Typeface {
-        val bytes = cachedDownload(cacheName, address, 3_000_000)
-        if (bytes.size <= 1024 || bytes.take(4) != listOf<Byte>(0, 1, 0, 0)) {
-            File(temporaryDirectory, cacheName).delete()
-            throw IOException("Invalid TrueType font")
+    private suspend fun loadTypeface(cacheName: String, address: String, tokens: List<String>): CheckedFont =
+        cachedValue(cacheName, address, 3_000_000) { bytes ->
+            val coverage = FontCoverage.read(bytes)
+            if (!tokens.all(coverage::supports)) throw MissingFontSymbol()
+            val file = File.createTempFile("qcf-font-", ".ttf", temporaryDirectory)
+            try {
+                file.writeBytes(bytes)
+                val typeface = Typeface.Builder(file).build() ?: throw IOException("Android could not open the font")
+                CheckedFont(typeface, coverage)
+            } finally { file.delete() }
         }
-        val file = File.createTempFile("qcf-font-", ".ttf", temporaryDirectory)
-        return try {
-            file.writeBytes(bytes)
-            Typeface.createFromFile(file)
-        } finally { file.delete() }
-    }
 
-    private suspend fun cachedDownload(cacheName: String, address: String, limit: Int): ByteArray {
+    private suspend fun <T> cachedValue(cacheName: String, address: String, limit: Int, decode: (ByteArray) -> T): T {
         val cached = File(temporaryDirectory, cacheName)
-        if (cached.isFile && cached.length() in 1..limit.toLong()) return cached.readBytes()
-
-        val bytes = download(address, limit)
-        val pending = File(temporaryDirectory, "$cacheName.part")
-        pending.writeBytes(bytes)
-        if (!pending.renameTo(cached)) {
-            cached.writeBytes(bytes)
-            pending.delete()
+        if (cached.isFile) {
+            try {
+                require(cached.length() in 1..limit.toLong())
+                return decode(cached.readBytes())
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Only the invalid app-cache entry is removed; retry from the source immediately.
+                cached.delete()
+            }
         }
-        return bytes
+        val bytes = download(address, limit)
+        val result = decode(bytes) // Validate before committing cache, including glyph coverage.
+        storeValidated(cacheName, bytes)
+        return result
+    }
+
+    private suspend fun storeValidated(cacheName: String, bytes: ByteArray) {
+        coroutineContext.ensureActive()
+        val cached = File(temporaryDirectory, cacheName)
+        try {
+            val pending = File.createTempFile("$cacheName-", ".part", temporaryDirectory)
+            try {
+                pending.writeBytes(bytes)
+                if (!pending.renameTo(cached)) Log.w("QuranPages", "Could not store validated cache entry")
+            } finally { pending.delete() }
+        } catch (_: IOException) {
+            // A full cache must not prevent displaying content already downloaded and validated.
+            Log.w("QuranPages", "Cache is unavailable; keeping content in memory")
+        }
     }
 
     private suspend fun download(address: String, limit: Int): ByteArray {

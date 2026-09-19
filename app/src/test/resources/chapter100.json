@@ -1,0 +1,434 @@
+{
+  "pagination": {
+    "per_page": 50,
+    "current_page": 1,
+    "next_page": null,
+    "total_pages": 1,
+    "total_records": 11
+  },
+  "verses": [
+    {
+      "verse_key": "100:1",
+      "verse_number": 1,
+      "words": [
+        {
+          "page_number": 599,
+          "line_number": 14,
+          "position": 1,
+          "code_v2": "ﲡ",
+          "text_uthmani": "وَٱلْعَـٰدِيَـٰتِ"
+        },
+        {
+          "page_number": 599,
+          "line_number": 14,
+          "position": 2,
+          "code_v2": "ﲢ",
+          "text_uthmani": "ضَبْحًۭا"
+        },
+        {
+          "page_number": 599,
+          "line_number": 14,
+          "position": 3,
+          "code_v2": "ﲣ",
+          "text_uthmani": "١"
+        }
+      ]
+    },
+    {
+      "verse_key": "100:2",
+      "verse_number": 2,
+      "words": [
+        {
+          "page_number": 599,
+          "line_number": 14,
+          "position": 1,
+          "code_v2": "ﲤ",
+          "text_uthmani": "فَٱلْمُورِيَـٰتِ"
+        },
+        {
+          "page_number": 599,
+          "line_number": 14,
+          "position": 2,
+          "code_v2": "ﲥ",
+          "text_uthmani": "قَدْحًۭا"
+        },
+        {
+          "page_number": 599,
+          "line_number": 14,
+          "position": 3,
+          "code_v2": "ﲦ",
+          "text_uthmani": "٢"
+        }
+      ]
+    },
+    {
+      "verse_key": "100:3",
+      "verse_number": 3,
+      "words": [
+        {
+          "page_number": 599,
+          "line_number": 14,
+          "position": 1,
+          "code_v2": "ﲧ",
+          "text_uthmani": "فَٱلْمُغِيرَٰتِ"
+        },
+        {
+          "page_number": 599,
+          "line_number": 15,
+          "position": 2,
+          "code_v2": "ﲨ",
+          "text_uthmani": "صُبْحًۭا"
+        },
+        {
+          "page_number": 599,
+          "line_number": 15,
+          "position": 3,
+          "code_v2": "ﲩ",
+          "text_uthmani": "٣"
+        }
+      ]
+    },
+    {
+      "verse_key": "100:4",
+      "verse_number": 4,
+      "words": [
+        {
+          "page_number": 599,
+          "line_number": 15,
+          "position": 1,
+          "code_v2": "ﲪ",
+          "text_uthmani": "فَأَثَرْنَ"
+        },
+        {
+          "page_number": 599,
+          "line_number": 15,
+          "position": 2,
+          "code_v2": "ﲫ",
+          "text_uthmani": "بِهِۦ"
+        },
+        {
+          "page_number": 599,
+          "line_number": 15,
+          "position": 3,
+          "code_v2": "ﲬ",
+          "text_uthmani": "نَقْعًۭا"
+        },
+        {
+          "page_number": 599,
+          "line_number": 15,
+          "position": 4,
+          "code_v2": "ﲭ",
+          "text_uthmani": "٤"
+        }
+      ]
+    },
+    {
+      "verse_key": "100:5",
+      "verse_number": 5,
+      "words": [
+        {
+          "page_number": 599,
+          "line_number": 15,
+          "position": 1,
+          "code_v2": "ﲮ",
+          "text_uthmani": "فَوَسَطْنَ"
+        },
+        {
+          "page_number": 599,
+          "line_number": 15,
+          "position": 2,
+          "code_v2": "ﲯ",
+          "text_uthmani": "بِهِۦ"
+        },
+        {
+          "page_number": 599,
+          "line_number": 15,
+          "position": 3,
+          "code_v2": "ﲰ",
+          "text_uthmani": "جَمْعًا"
+        },
+        {
+          "page_number": 599,
+          "line_number": 15,
+          "position": 4,
+          "code_v2": "ﲱ",
+          "text_uthmani": "٥"
+        }
+      ]
+    },
+    {
+      "verse_key": "100:6",
+      "verse_number": 6,
+      "words": [
+        {
+          "page_number": 600,
+          "line_number": 1,
+          "position": 1,
+          "code_v2": "ﱁ",
+          "text_uthmani": "إِنَّ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 1,
+          "position": 2,
+          "code_v2": "ﱂ",
+          "text_uthmani": "ٱلْإِنسَـٰنَ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 1,
+          "position": 3,
+          "code_v2": "ﱃ",
+          "text_uthmani": "لِرَبِّهِۦ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 1,
+          "position": 4,
+          "code_v2": "ﱄ",
+          "text_uthmani": "لَكَنُودٌۭ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 1,
+          "position": 5,
+          "code_v2": "ﱅ",
+          "text_uthmani": "٦"
+        }
+      ]
+    },
+    {
+      "verse_key": "100:7",
+      "verse_number": 7,
+      "words": [
+        {
+          "page_number": 600,
+          "line_number": 1,
+          "position": 1,
+          "code_v2": "ﱆ",
+          "text_uthmani": "وَإِنَّهُۥ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 1,
+          "position": 2,
+          "code_v2": "ﱇ",
+          "text_uthmani": "عَلَىٰ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 1,
+          "position": 3,
+          "code_v2": "ﱈ",
+          "text_uthmani": "ذَٰلِكَ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 1,
+          "position": 4,
+          "code_v2": "ﱉ",
+          "text_uthmani": "لَشَهِيدٌۭ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 1,
+          "position": 5,
+          "code_v2": "ﱊ",
+          "text_uthmani": "٧"
+        }
+      ]
+    },
+    {
+      "verse_key": "100:8",
+      "verse_number": 8,
+      "words": [
+        {
+          "page_number": 600,
+          "line_number": 1,
+          "position": 1,
+          "code_v2": "ﱋ",
+          "text_uthmani": "وَإِنَّهُۥ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 1,
+          "position": 2,
+          "code_v2": "ﱌ",
+          "text_uthmani": "لِحُبِّ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 2,
+          "position": 3,
+          "code_v2": "ﱍ",
+          "text_uthmani": "ٱلْخَيْرِ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 2,
+          "position": 4,
+          "code_v2": "ﱎ",
+          "text_uthmani": "لَشَدِيدٌ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 2,
+          "position": 5,
+          "code_v2": "ﱏ",
+          "text_uthmani": "٨"
+        }
+      ]
+    },
+    {
+      "verse_key": "100:9",
+      "verse_number": 9,
+      "words": [
+        {
+          "page_number": 600,
+          "line_number": 2,
+          "position": 1,
+          "code_v2": "ﱐ ﱑ",
+          "text_uthmani": "۞ أَفَلَا"
+        },
+        {
+          "page_number": 600,
+          "line_number": 2,
+          "position": 2,
+          "code_v2": "ﱒ",
+          "text_uthmani": "يَعْلَمُ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 2,
+          "position": 3,
+          "code_v2": "ﱓ",
+          "text_uthmani": "إِذَا"
+        },
+        {
+          "page_number": 600,
+          "line_number": 2,
+          "position": 4,
+          "code_v2": "ﱔ",
+          "text_uthmani": "بُعْثِرَ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 2,
+          "position": 5,
+          "code_v2": "ﱕ",
+          "text_uthmani": "مَا"
+        },
+        {
+          "page_number": 600,
+          "line_number": 2,
+          "position": 6,
+          "code_v2": "ﱖ",
+          "text_uthmani": "فِى"
+        },
+        {
+          "page_number": 600,
+          "line_number": 2,
+          "position": 7,
+          "code_v2": "ﱗ",
+          "text_uthmani": "ٱلْقُبُورِ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 2,
+          "position": 8,
+          "code_v2": "ﱘ",
+          "text_uthmani": "٩"
+        }
+      ]
+    },
+    {
+      "verse_key": "100:10",
+      "verse_number": 10,
+      "words": [
+        {
+          "page_number": 600,
+          "line_number": 3,
+          "position": 1,
+          "code_v2": "ﱙ",
+          "text_uthmani": "وَحُصِّلَ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 3,
+          "position": 2,
+          "code_v2": "ﱚ",
+          "text_uthmani": "مَا"
+        },
+        {
+          "page_number": 600,
+          "line_number": 3,
+          "position": 3,
+          "code_v2": "ﱛ",
+          "text_uthmani": "فِى"
+        },
+        {
+          "page_number": 600,
+          "line_number": 3,
+          "position": 4,
+          "code_v2": "ﱜ",
+          "text_uthmani": "ٱلصُّدُورِ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 3,
+          "position": 5,
+          "code_v2": "ﱝ",
+          "text_uthmani": "١٠"
+        }
+      ]
+    },
+    {
+      "verse_key": "100:11",
+      "verse_number": 11,
+      "words": [
+        {
+          "page_number": 600,
+          "line_number": 3,
+          "position": 1,
+          "code_v2": "ﱞ",
+          "text_uthmani": "إِنَّ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 3,
+          "position": 2,
+          "code_v2": "ﱟ",
+          "text_uthmani": "رَبَّهُم"
+        },
+        {
+          "page_number": 600,
+          "line_number": 3,
+          "position": 3,
+          "code_v2": "ﱠ",
+          "text_uthmani": "بِهِمْ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 3,
+          "position": 4,
+          "code_v2": "ﱡ",
+          "text_uthmani": "يَوْمَئِذٍۢ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 3,
+          "position": 5,
+          "code_v2": "ﱢ",
+          "text_uthmani": "لَّخَبِيرٌۢ"
+        },
+        {
+          "page_number": 600,
+          "line_number": 3,
+          "position": 6,
+          "code_v2": "ﱣ",
+          "text_uthmani": "١١"
+        }
+      ]
+    }
+  ]
+}
