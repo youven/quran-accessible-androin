@@ -28,7 +28,7 @@ import kotlinx.coroutines.CancellationException
 
 private sealed interface PageState {
     data object Loading : PageState
-    data object Failed : PageState
+    data class Failed(val part: PageLoadException.Part?) : PageState
     data class Ready(val result: LoadedPage) : PageState
 }
 
@@ -68,7 +68,8 @@ fun ReaderScreen(
                 value = PageState.Loading
                 value = try { PageState.Ready(repository.load(page)) }
                 catch (e: CancellationException) { throw e }
-                catch (_: Exception) { PageState.Failed }
+                catch (error: PageLoadException) { PageState.Failed(error.part) }
+                catch (_: Exception) { PageState.Failed(null) }
             }
             val onLoaded by rememberUpdatedState(onPageLoaded)
             LaunchedEffect(state) { if (state is PageState.Ready) onLoaded(page) }
@@ -78,8 +79,16 @@ fun ReaderScreen(
                         CircularProgressIndicator()
                         Text("جارٍ تحميل نص الصفحة وخطها…", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                     }
-                    PageState.Failed -> Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp)) {
-                        Text(stringResource(R.string.load_error), Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                    is PageState.Failed -> Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp)) {
+                        val detail = when (current.part) {
+                            PageLoadException.Part.TEXT -> "تعذّر تحميل نص الصفحة."
+                            PageLoadException.Part.PAGE_FONT -> "تم تحميل النص، لكن تعذّر تحميل خط هذه الصفحة."
+                            PageLoadException.Part.COMMON_FONT -> "تعذّر تحميل خط البسملة أو عناوين السور."
+                            PageLoadException.Part.CHAPTERS -> "تعذّر تحميل أسماء السور."
+                            null -> stringResource(R.string.load_error)
+                        }
+                        Text(detail, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                        Text("سيحاول التطبيق ثلاث مرات، ثم يمكنك الضغط على إعادة المحاولة.", Modifier.padding(top = 8.dp))
                         Button(onClick = { retry++ }) { Text("إعادة المحاولة") }
                     }
                     is PageState.Ready -> if (accessible) {
