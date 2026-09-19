@@ -23,10 +23,10 @@ class MadaniPageTest {
     }
 
     @Test fun preservesEditionPageNumbering() {
-        assertEquals("https://quran.ksu.edu.sa/png_big/1.png", MadaniPage.imageUrl(1))
-        assertEquals("https://quran.ksu.edu.sa/png_big/604.png", MadaniPage.imageUrl(604))
+        assertEquals("https://verses.quran.foundation/fonts/quran/hafs/v2/ttf/p1.ttf", MadaniPage.fontUrl(1))
+        assertEquals("https://verses.quran.foundation/fonts/quran/hafs/v2/ttf/p604.ttf", MadaniPage.fontUrl(604))
     }
 
     @Test(expected = IllegalArgumentException::class)
-    fun rejectsInvalidDownloadPage() { MadaniPage.imageUrl(605) }
+    fun rejectsInvalidDownloadPage() { MadaniPage.fontUrl(605) }
 }

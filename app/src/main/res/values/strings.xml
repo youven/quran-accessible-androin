@@ -12,8 +12,8 @@
     <string name="edition_detail">رواية حفص عن عاصم · ٦٠٤ صفحات</string>
     <string name="resume_page">متابعة القراءة · صفحة %1$d</string>
     <string name="start_reading">البدء من الفاتحة</string>
-    <string name="image_reader_notice">تُحفظ الصفحات بعد فتحها للقراءة دون إنترنت. هذا الإصدار يعرض صور الصفحات؛ قراءة نص الآيات بقارئ الشاشة والتلاوة ستتوفران في مرحلة لاحقة.</string>
-    <string name="source_credit">الصور: مشروع المصحف الإلكتروني بجامعة الملك سعود، نقلًا عن مجمع الملك فهد لطباعة المصحف الشريف.</string>
+    <string name="text_reader_notice">نص بخطوط صفحات المصحف، مع تكبير بالإصبعين وعرض أفقي بعرض الشاشة. يتطلب تحميل الصفحة اتصالًا بالإنترنت. اختر «النص الميسّر» للقراءة بنص أكبر أو بقارئ الشاشة.</string>
+    <string name="source_credit">النصوص وبيانات الأسطر: Quran.com · الخطوط: Quran Foundation، QCF V2.</string>
     <string name="home">الرئيسية</string>
     <string name="page_number">صفحة %1$d من %2$d</string>
     <string name="hide_tools">إخفاء الأدوات</string>
@@ -27,11 +27,8 @@
     <string name="bookmarked_page">صفحة %1$d</string>
     <string name="close">إغلاق</string>
     <string name="loading_page">جارٍ تحميل الصفحة…</string>
-    <string name="load_error">تعذّر تحميل الصفحة. تحقق من اتصال الإنترنت ثم أعد المحاولة. يمكنك قراءة الصفحات المحفوظة دون اتصال.</string>
+    <string name="load_error">تعذّر تحميل النص أو خط الصفحة. تحقق من اتصال الإنترنت ثم أعد المحاولة.</string>
     <string name="retry">إعادة المحاولة</string>
-    <string name="saved_offline">هذه الصفحة محفوظة للقراءة دون إنترنت</string>
-    <string name="not_saved">تم فتح الصفحة، لكن تعذّر حفظها. تحقق من مساحة الجهاز.</string>
-    <string name="page_image_description">صورة صفحة %1$d من مصحف المدينة. نص الآيات غير متاح لقارئ الشاشة في هذا الإصدار.</string>
     <string name="zoom_out">تصغير</string>
     <string name="zoom_in">تكبير</string>
     <string name="fit_page">كامل الصفحة</string>

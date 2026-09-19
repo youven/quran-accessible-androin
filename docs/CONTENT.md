@@ -1,36 +1,28 @@
-# Content integration
+# مصدر المحتوى النصي
 
-## Candidates
-- Al Quran Cloud: https://alquran.cloud/cdn — documented ayah images and recitation CDN. Ayah images are NOT full Madani pages.
-- QUL: https://qul.tarteel.ai/resources — downloadable datasets, layouts, tafsir and recitation timing. Not a hosted API.
-- Quran image generator: https://github.com/quran/quran.com-images — page generation and glyph bounds. Code and content have separate rights.
-- Quran Foundation: https://api-docs.quran.foundation/ — evaluate content access and authentication before integration.
+تاريخ التحقق: 2026-09-18.
 
-## Current development source
-The 0.2.0 reader requests https://quran.ksu.edu.sa/png_big/{page}.png for pages 1–604.
-KSU describes its project as reading photographed Madani pages: https://quran.ksu.edu.sa/ . Its about section credits the King Fahd Complex for images: https://quran.ksu.edu.sa/index.php?l=ar .
-Pages 1, 2 and 604 were downloaded, PNG-decoded and visually inspected; all sampled images are 622×917. See source-samples.json. Images are fetched on demand and stored in the application's private files directory, not committed to the repository.
-This is a public HTTPS image source, not a formally documented API or an availability guarantee. No authentication key is required for the observed requests.
-Full edition review and confirmation of redistribution/use terms remain release gates. No commercial-use permission is asserted.
+- [توثيق Quran Foundation للخطوط](https://api-docs.quran.foundation/docs/tutorials/fonts/font-rendering/): QCF V2، mushaf=1، المصحف المدني 1421هـ.
+- النص ومواضع الكلمات: `https://api.quran.com/api/v4/verses/by_page/{page}?words=true&word_fields=code_v2,text_uthmani&per_page=50&mushaf=1&page={batch}`.
+- أسماء السور: `https://api.quran.com/api/v4/chapters`.
+- خط الصفحة: `https://verses.quran.foundation/fonts/quran/hafs/v2/ttf/p{page}.ttf`.
 
-## Required dataset contract
-A versioned edition identifies riwayah, layout version, page count, source attribution and redistribution terms.
-Each page identifies its image or exact-layout rendering data, dimensions and checksum.
-Each ayah identifies surah number, ayah number, trusted Unicode text and page placement.
-Bounds must use the same image dimensions and edition; scale them using the same transform as the displayed image.
-Recitation records identify reciter and ayah, or validated timestamps in a surah recording.
-Tafsir records retain author/source and ayah grouping.
+تم التحقق من استجابات الصفحات 1 و2 و50 و187 و604، وحفظ عينات JSON لاختبارات المحلل. خطوط الصفحات غير مضمّنة في المستودع. تعالج كل دفعات API ويُرفض نقص الآيات وتكرارها وغياب الحقول أو عدم توافق الخط مع الرموز. يحتفظ المحلل بالكلمات الواقعة على الصفحة المطلوبة فقط، لأن الآية قد تمتد إلى صفحة أخرى.
 
-## Rendering decision
-Use exact-layout text only after comparison establishes that the supplied fonts and layout reproduce the reference.
-Otherwise use verified page images and matching bounds, with separate semantic/text reading mode.
-Never reconstruct Quran text with OCR or generative models.
-Never present a generic Arabic font or assembled ayah images as an exact Madani page.
+البسملة بين السور تُرسم بالكلمات الأربع الأولى من خط الفاتحة، دون رقم آية. لا تُضاف بسملة قبل التوبة؛ بسملة الفاتحة جزء من آياتها. يُستنتج موضع العنوان من موضع أول كلمة في السورة، مع اختبار عدم تداخله مع سطر آيات. هذه الاستنتاجات تحتاج مراجعة جميع بدايات السور قبل النشر.
 
-## Offline and safety
-Download to temporary files, verify hashes and completeness, then atomically activate a dataset.
-Keep the previous valid edition when download fails.
-Persist user reading state independently from content caches.
-Use HTTPS, cache allowed content, and do not embed API secrets in Android.
-Any provider requiring a confidential client secret needs a backend or a supported public-client flow.
-Free access does not guarantee unlimited requests or redistribution rights.
+خط عناوين السور: `https://verses.quran.foundation/fonts/quran/surah-names/v1/sura_names.ttf`، مع رموز U+E001 إلى U+E114 المطابقة لأرقام السور بالنظام العشري المرمّز.
+
+## الحقوق وشروط الاستضافة
+
+الفضل في النصوص وبيانات الكلمات لـQuran.com والخطوط لـQuran Foundation وأصحابها. لا ينقل هذا المشروع ملكية المحتوى أو يمنحه ترخيصًا مفتوحًا. يرجى مراجعة شروط المزود الحالية قبل النشر. يذكر توثيق الخطوط متطلبات حساب المطور ونسب المصدر عند التخزين المحلي والتضمين؛ لم نفعّل حزمة خطوط أو تخزينًا دائمًا دون تحقق من استيفائها. ينشئ Android ملف خط مؤقتًا للتحميل ثم يحذفه، وتبقى الخطوط في ذاكرة الجلسة فقط.
+
+الواجهة العامة القديمة نجحت دون مفتاح عند الفحص، لكن الواجهة الحديثة `apis.quran.foundation/content/api/v4` تحتاج اعتمادًا؛ لا تضع client secret في APK. عند الانتقال إليها يلزم خادم أو وسيط مصادق.
+
+## ما لم يُعتمد بعد
+
+- مطابقة زخارف العناوين والإطار مع الطبعة الورقية.
+- مراجعة بصرية كاملة للصفحات الـ604 ومواقع العلامات الخاصة.
+- اختبار الخطوط والتشكيل على أجهزة Android متعددة.
+
+لا يُستخدم خط عربي عام بديلًا بصمت عند تعذر خط الصفحة؛ يظهر خطأ وإعادة محاولة، لتجنب إظهار رموز أو رسم مضلل.

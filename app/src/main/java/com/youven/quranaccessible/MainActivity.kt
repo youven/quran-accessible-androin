@@ -1,6 +1,9 @@
 package com.youven.quranaccessible
 
 import android.os.Bundle
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -31,7 +34,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val preferences = getSharedPreferences("reading_settings", MODE_PRIVATE)
-        val repository = PageRepository(filesDir)
+        val repository = ViewModelProvider(this)[ReaderModel::class.java].repository
         setContent {
             var easyMode by rememberSaveable { mutableStateOf(preferences.getBoolean("easy_mode", true)) }
             var reading by rememberSaveable { mutableStateOf(false) }
@@ -100,7 +103,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                     Switch(checked = easyMode, onCheckedChange = null)
                                 }
-                                Text(stringResource(R.string.image_reader_notice), fontSize = 18.sp, lineHeight = 28.sp)
+                                Text(stringResource(R.string.text_reader_notice), fontSize = 18.sp, lineHeight = 28.sp)
                                 Text(stringResource(R.string.source_credit), style = MaterialTheme.typography.bodyMedium)
                             }
                         }
@@ -109,4 +112,9 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+/** Keeps page fonts and text across rotation without retaining an Activity. */
+class ReaderModel(application: Application) : AndroidViewModel(application) {
+    val repository = PageRepository(application.cacheDir)
 }

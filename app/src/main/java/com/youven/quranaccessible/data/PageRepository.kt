@@ -1,80 +1,101 @@
 package com.youven.quranaccessible.data
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.graphics.Paint
+import android.graphics.Typeface
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
+import org.json.JSONObject
 import java.io.File
-import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.coroutines.coroutineContext
 
-data class LoadedPage(val bitmap: Bitmap, val savedOffline: Boolean)
+data class LoadedPage(val page: TextPage, val font: Typeface, val basmalaFont: Typeface, val titleFont: Typeface, val chapterNames: Map<Int, String>)
 
-/** Read-through persistent storage: no bulk downloads or fabricated placeholder pages. */
-class PageRepository(filesDir: File) {
-    private val directory = File(filesDir, "mushaf/${MadaniPage.EDITION}")
+class PageRepository(private val temporaryDirectory: File) {
+    private val mutex = Mutex()
+    private val pages = LinkedHashMap<Int, LoadedPage>()
+    private var names: Map<Int, String>? = null
+    private var openingFont: Typeface? = null
+    private var titleFont: Typeface? = null
 
-    suspend fun load(page: Int): LoadedPage = withContext(Dispatchers.IO) {
-        val url = MadaniPage.imageUrl(page)
-        val target = File(directory, "$page.png")
-        if (target.isFile && target.length() in 1..MAX_BYTES.toLong()) {
-            val bitmap = runCatching { decode(target.readBytes()) }.getOrNull()
-            if (bitmap != null) return@withContext LoadedPage(bitmap, true)
-            target.delete() // A corrupt cached image must not trap the reader in an error loop.
+    suspend fun load(number: Int): LoadedPage = withContext(Dispatchers.IO) {
+        require(number in 1..604)
+        mutex.withLock {
+            pages[number]?.let { return@withLock it }
+            val responses = mutableListOf<String>()
+            var next = 1
+            do {
+                coroutineContext.ensureActive()
+                val body = download("https://api.quran.com/api/v4/verses/by_page/$number?words=true&word_fields=code_v2,text_uthmani&per_page=50&mushaf=1&page=$next", 4_000_000).toString(Charsets.UTF_8)
+                responses += body
+                val pagination = JSONObject(body).getJSONObject("pagination")
+                val following = pagination.optInt("next_page", 0)
+                require(following == 0 || following == next + 1)
+                next = following
+                require(responses.size <= 20)
+            } while (next != 0)
+            val page = PageParser.parse(number, responses)
+            val font = if (number == 1 && openingFont != null) openingFont!! else loadFont(number)
+            val paint = Paint().apply { typeface = font }
+            require(page.words.all { paint.hasGlyph(it.glyph) }) { "Font does not match page" }
+            val basmala = openingFont ?: (if (number == 1) font else loadFont(1)).also { openingFont = it }
+            val titles = titleFont ?: loadTypeface("https://verses.quran.foundation/fonts/quran/surah-names/v1/sura_names.ttf").also { titleFont = it }
+            val titlePaint = Paint().apply { typeface = titles }
+            require(titlePaint.hasGlyph("\uE000") && page.starts.all {
+                titlePaint.hasGlyph((0xE000 + it.chapter.toString().toInt(16)).toChar().toString())
+            }) { "Missing chapter title glyph" }
+            val chapters = names ?: run {
+                val list = JSONObject(download("https://api.quran.com/api/v4/chapters", 200_000).toString(Charsets.UTF_8)).getJSONArray("chapters")
+                require(list.length() == 114)
+                (0 until list.length()).associate { i -> list.getJSONObject(i).let { it.getInt("id") to it.getString("name_arabic") } }.also { names = it }
+            }
+            coroutineContext.ensureActive()
+            LoadedPage(page, font, basmala, titles, chapters).also {
+                pages[number] = it
+                while (pages.size > 3) pages.remove(pages.keys.first())
+            }
         }
-        val connection = URL(url).openConnection() as HttpURLConnection
-        val bytes = try {
+    }
+
+    private suspend fun loadFont(page: Int): Typeface = loadTypeface(MadaniPage.fontUrl(page))
+
+    private suspend fun loadTypeface(address: String): Typeface {
+        val bytes = download(address, 3_000_000)
+        require(bytes.size > 1024 && bytes.take(4) == listOf<Byte>(0, 1, 0, 0)) { "Invalid TrueType font" }
+        val file = File.createTempFile("qcf-font-", ".ttf", temporaryDirectory)
+        return try {
+            file.writeBytes(bytes)
+            Typeface.createFromFile(file)
+        } finally { file.delete() }
+    }
+
+    private suspend fun download(address: String, limit: Int): ByteArray {
+        coroutineContext.ensureActive()
+        val connection = URL(address).openConnection() as HttpURLConnection
+        return try {
             connection.connectTimeout = 15_000
             connection.readTimeout = 20_000
             connection.instanceFollowRedirects = false
-            connection.setRequestProperty("Accept", "image/png")
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) throw IOException("Page unavailable")
-            if (connection.contentLengthLong > MAX_BYTES) throw IOException("Page too large")
+            connection.setRequestProperty("Accept", "*/*")
+            connection.setRequestProperty("User-Agent", "QuranAccessibleAndroid/0.3")
+            require(connection.responseCode == 200) { "Source unavailable" }
+            require(connection.contentLengthLong <= limit)
             connection.inputStream.use { input ->
-                val output = ByteArrayOutputStream()
+                val output = java.io.ByteArrayOutputStream()
                 val buffer = ByteArray(8192)
                 while (true) {
-                    currentCoroutineContext().ensureActive()
+                    coroutineContext.ensureActive()
                     val count = input.read(buffer)
                     if (count < 0) break
-                    if (output.size() + count > MAX_BYTES) throw IOException("Page too large")
+                    require(output.size() + count <= limit)
                     output.write(buffer, 0, count)
                 }
                 output.toByteArray()
             }
-        } finally {
-            connection.disconnect()
-        }
-        currentCoroutineContext().ensureActive()
-        val bitmap = decode(bytes) ?: throw IOException("Invalid page image")
-        // Storage failure must not hide a successfully downloaded page.
-        val saved = runCatching {
-            if (!directory.isDirectory && !directory.mkdirs()) throw IOException("Storage unavailable")
-            val temporary = File.createTempFile("page-$page-", ".part", directory)
-            try {
-                temporary.outputStream().use { it.write(bytes) }
-                if (!temporary.renameTo(target)) throw IOException("Cannot save page")
-            } finally {
-                temporary.delete()
-            }
-        }.isSuccess
-        LoadedPage(bitmap, saved)
-    }
-
-    private fun decode(bytes: ByteArray): Bitmap? {
-        if (bytes.size < 8 || !bytes.copyOfRange(0, 8).contentEquals(PNG_SIGNATURE)) return null
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        if (bounds.outWidth !in 300..2400 || bounds.outHeight !in 400..3600) return null
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-    }
-
-    companion object {
-        private const val MAX_BYTES = 4 * 1024 * 1024
-        private val PNG_SIGNATURE = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
+        } finally { connection.disconnect() }
     }
 }

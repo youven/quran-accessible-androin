@@ -1,13 +1,13 @@
 package com.youven.quranaccessible.data
 
-/** One edition only: the KSU/Ayat Hafs page images, numbered 1 through 604. */
+/** Madani 1421H, QCF V2: never mix page fonts or editions. */
 object MadaniPage {
     const val COUNT = 604
-    const val EDITION = "ksu-hafs-png-big-v1"
+    const val EDITION = "qcf-v2-mushaf-1"
 
-    fun imageUrl(page: Int): String {
+    fun fontUrl(page: Int): String {
         require(page in 1..COUNT)
-        return "https://quran.ksu.edu.sa/png_big/$page.png"
+        return "https://verses.quran.foundation/fonts/quran/hafs/v2/ttf/p$page.ttf"
     }
 
     fun restoredPage(value: Int): Int = value.coerceIn(1, COUNT)

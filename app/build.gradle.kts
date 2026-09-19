@@ -10,8 +10,8 @@ android {
         applicationId = "com.youven.quranaccessible"
         minSdk = 28
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -28,4 +28,5 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

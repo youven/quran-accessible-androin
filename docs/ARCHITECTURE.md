@@ -1,23 +1,11 @@
-# Architecture
+# Text reader architecture
 
-## Implemented in 0.2.0
-- `MainActivity`: Arabic home, reading preferences, last successful page and bookmarks.
-- `ui/ReaderScreen`: page navigation, validated page jump, loading/error states, bookmark list and zoom/scroll controls.
-- `data/MadaniPage`: edition identity, page bounds, source URLs, Arabic/Persian/ASCII numeric input.
-- `data/PageRepository`: IO-dispatched HTTPS requests and persistent image storage in filesDir.
-- Unit tests exercise numeral parsing, invalid input, restoration boundaries and endpoint numbering.
+- `PageRepository`: bounded HTTPS downloads on IO, cancellation checks, all API pagination, session cache of three pages, transient Typeface files. A page is ready only when its text, matching font and chapter metadata load.
+- `PageParser`: pure data validation; retains original word order, glyphs and page/line indices. Unicode remains separate from display glyphs for accessibility.
+- `MushafTextView`: native Canvas text, QCF word ligatures placed right-to-left at their natural widths; one font size per page, centered short lines. No bitmap page rendering. Original line assignments are retained at every zoom.
+- `PageViewport`: platform-independent zoom anchor and pan constraints. Portrait fits page, landscape fits width. Rotation resets viewport to an appropriate fit.
+- `ReaderScreen`: compact controls, page jumps and bookmarks, loading/retry states; separate reflowable Unicode reading mode with scalable text and TalkBack semantics.
 
-The repository uses one edition only: KSU/Ayat Hafs png_big. Each page change creates a separate keyed composable. Cancelled loads cannot display their image under a newer page number. Last position changes only when a page loads successfully.
+Edition is QCF V2 / mushaf 1 throughout. No mixing V1 page indices with V2 fonts. The first two pages retain their exceptional eight-line structure. Titles use the provider’s surah-name font; the surrounding printed ornaments are not yet reproduced. Full print facsimile is not claimed.
 
-Files are decoded and checked for PNG signature, dimensions and size before saving with temporary-file rename. Corrupt cache entries are retried from the source. Storage errors do not prevent reading a downloaded image. No credentials or network calls run on the UI thread. Network operations have connection and read timeouts. Cancellation checks run between reads; a blocked read can last until its timeout.
-
-## Future structure
-- ViewModel and lifecycle-aware state flows as audio and verse-level navigation are added.
-- Room for validated local ayah metadata, text, tafsir and search.
-- DataStore migration from the initial SharedPreferences settings.
-- Media3 for recitation and media session.
-- A separate reflowing verse reader with per-ayah semantics.
-- Matching ayah bounds from the same page edition before implementing verse selection.
-- Versioned content manifests with authoritative checksums and explicit redistribution terms.
-
-No generated Quran text or OCR is used. No text rendering may claim Madani page fidelity until layout and fonts are verified against the reference.
+No audio, tafsir or search implementation yet. No persistent offline font cache. Existing image cache from 0.2 is no longer read; it is not deleted automatically.
