@@ -60,7 +60,8 @@ class MushafTextView(context: Context) : View(context) {
         ink.typeface = result.font; ink.textSize = 32f
         val widths = result.page.lines.mapValues { (_, words) -> words.sumOf { ink.measureText(it.glyph).toDouble() }.toFloat() }
         // A single size per page preserves relative word widths and centered short lines.
-        val fontSize = 32f * minOf(1f, 520f / (widths.values.maxOrNull() ?: 520f))
+        val maxW = widths.values.maxOrNull() ?: 520f
+        val fontSize = 32f * minOf(1f, 520f / maxW)
         fun baseline(line: Int) = if (result.page.number <= 2) 200f + line * 52f else 36f + line * 52f
         result.page.lines.forEach { (line, words) ->
             ink.typeface = result.font; ink.textSize = fontSize; ink.textAlign = Paint.Align.LEFT

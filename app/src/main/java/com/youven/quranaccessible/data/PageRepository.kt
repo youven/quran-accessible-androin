@@ -85,7 +85,7 @@ class PageRepository(private val temporaryDirectory: File) {
 
     private suspend fun loadTextPage(number: Int): TextPage {
         return try {
-            val cacheName = "page-$number-complete-v2.json"
+            val cacheName = "page-$number-complete-v3.json"
             val cached = File(temporaryDirectory, cacheName)
             if (cached.isFile) {
                 try {
@@ -99,9 +99,9 @@ class PageRepository(private val temporaryDirectory: File) {
             var responses = fetchTextBatches(address)
             val result = try { PageParser.parse(number, responses) }
             catch (invalid: IllegalArgumentException) {
-                val chapters = PageRecovery.chapters(responses)
+                val chapters = PageRecovery.chapters(number)
                 val restored = chapters.associateWith { chapter ->
-                    fetchTextBatches("https://api.quran.com/api/v4/verses/by_chapter/$chapter?words=true&word_fields=code_v2,text_uthmani&per_page=50")
+                    fetchTextBatches("https://api.quran.com/api/v4/verses/by_chapter/$chapter?words=true&word_fields=code_v2,text_uthmani&per_page=50&mushaf=1")
                 }
                 responses = listOf(PageRecovery.rebuild(number, responses, restored))
                 PageParser.parse(number, responses)
@@ -152,7 +152,12 @@ class PageRepository(private val temporaryDirectory: File) {
         if (cached.isFile) {
             try {
                 require(cached.length() in 1..limit.toLong())
-                return decode(cached.readBytes())
+                val rawBytes = cached.readBytes()
+                val sanitized = FontCoverage.sanitize(rawBytes)
+                if (sanitized !== rawBytes) {
+                    storeValidated(cacheName, sanitized)
+                }
+                return decode(sanitized)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -160,7 +165,7 @@ class PageRepository(private val temporaryDirectory: File) {
                 cached.delete()
             }
         }
-        val bytes = download(address, limit)
+        val bytes = FontCoverage.sanitize(download(address, limit))
         val result = decode(bytes) // Validate before committing cache, including glyph coverage.
         storeValidated(cacheName, bytes)
         return result

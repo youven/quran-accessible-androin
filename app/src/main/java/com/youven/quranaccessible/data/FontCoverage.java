@@ -57,6 +57,33 @@ public final class FontCoverage {
         return new FontCoverage(chars);
     }
 
+    /**
+     * Neutralizes the optional 'hdmx' table in TrueType fonts by changing its tag to 'xdmx'.
+     *
+     * Some QCF V2 fonts contain a buggy 'hdmx' table where zero-width combining waqf marks
+     * have device advance widths of 255 at certain pixel sizes (e.g. 32px). This causes
+     * Android's FreeType rasterizer and HarfBuzz shaper to inflate line measurements and
+     * shift base words off-screen during RTL drawing. Disabling the 'hdmx' table causes the
+     * rasterizer to use the accurate, linearly-scaled 'hmtx' metrics instead.
+     */
+    public static byte[] sanitize(byte[] bytes) {
+        if (bytes == null || bytes.length < 12) return bytes;
+        int b0 = bytes[0] & 0xFF, b1 = bytes[1] & 0xFF, b2 = bytes[2] & 0xFF, b3 = bytes[3] & 0xFF;
+        long signature = ((long) b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
+        if (signature != 0x00010000L && signature != 0x4F54544FL && signature != 0x74727565L) return bytes;
+        int tables = ((bytes[4] & 0xFF) << 8) | (bytes[5] & 0xFF);
+        if (tables <= 0 || 12 + tables * 16 > bytes.length) return bytes;
+        for (int i = 0; i < tables; i++) {
+            int record = 12 + i * 16;
+            if (bytes[record] == 'h' && bytes[record + 1] == 'd' && bytes[record + 2] == 'm' && bytes[record + 3] == 'x') {
+                byte[] copy = bytes.clone();
+                copy[record] = 'x';
+                return copy;
+            }
+        }
+        return bytes;
+    }
+
     private static void read4(Data table, int glyphCount, BitSet chars) throws IOException {
         int doubled = table.u16(6);
         if (doubled == 0 || doubled % 2 != 0) throw invalid();

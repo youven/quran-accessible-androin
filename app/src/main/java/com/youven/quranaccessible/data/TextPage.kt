@@ -4,8 +4,8 @@ import org.json.JSONObject
 
 data class QuranWord(val glyph: String, val text: String, val line: Int, val verse: String, val position: Int)
 data class ChapterStart(val chapter: Int, val firstLine: Int) {
-    val headerLine get() = firstLine - if (chapter == 1 || chapter == 9) 1 else 2
-    val basmalaLine get() = if (chapter == 1 || chapter == 9) null else firstLine - 1
+    val headerLine get() = if (firstLine <= 2) 1 else if (chapter == 1 || chapter == 9) firstLine - 1 else firstLine - 2
+    val basmalaLine get() = if (firstLine <= 2 || chapter == 1 || chapter == 9) null else firstLine - 1
 }
 data class TextPage(val number: Int, val words: List<QuranWord>, val starts: List<ChapterStart>) {
     val lines get() = words.groupBy { it.line }.toSortedMap()
@@ -40,7 +40,6 @@ object PageParser {
                     val line = word.getInt("line_number")
                     val position = word.getInt("position")
                     require(glyph.isNotBlank() && text.isNotBlank() && line in 1..15)
-                    require(words.lastOrNull()?.line?.let { it <= line } != false)
                     words += QuranWord(glyph, text, line, key, position)
                     if (verse.getInt("verse_number") == 1 && position == 1) {
                         val start = ChapterStart(key.substringBefore(':').toInt(), line)
@@ -50,9 +49,18 @@ object PageParser {
                 }
             }
         }
-        require(seen.size == total && words.isNotEmpty()) { "Incomplete page" }
+        val spec = MadaniPage.spec(page)
+        require(words.size == spec.wordCount) { "Incomplete page words: ${words.size} vs ${spec.wordCount}" }
+        require(words.first().verse == spec.firstVerse) { "Wrong start verse: ${words.first().verse} vs ${spec.firstVerse}" }
+        require(words.last().verse == spec.lastVerse) { "Wrong end verse: ${words.last().verse} vs ${spec.lastVerse}" }
         val occupied = words.map { it.line }.toSet()
-        starts.forEach { require(it.headerLine !in occupied && it.basmalaLine !in occupied) }
+        val covered = occupied + starts.map { it.headerLine } + starts.mapNotNull { it.basmalaLine }
+        if (page <= 2) {
+            require((1..8).all { it in covered }) { "Incomplete opening page" }
+        } else {
+            require(1 in occupied || starts.any { it.headerLine == 1 }) { "Page missing top lines" }
+        }
+        starts.forEach { require(it.headerLine !in occupied && (it.basmalaLine == null || it.basmalaLine !in occupied)) }
         return TextPage(page, words, starts)
     }
 }

@@ -89,4 +89,30 @@ public class FontCoverageTest {
         ByteBuffer.wrap(sub).putShort(32, (short) 100);
         FontCoverage.read(font(sub, false));
     }
+
+    @Test public void sanitizeRenamesHdmxTableTagToXdmx() {
+        ByteBuffer b = ByteBuffer.allocate(60);
+        b.putInt(0x00010000).putShort((short) 2);
+        b.position(12);
+        b.putInt(0x6D617870).putInt(0).putInt(44).putInt(6); // maxp
+        b.putInt(0x68646D78).putInt(0).putInt(50).putInt(10); // hdmx
+        byte[] original = b.array();
+        byte[] sanitized = FontCoverage.sanitize(original);
+        assertNotSame(original, sanitized);
+        assertEquals(0x78646D78, ByteBuffer.wrap(sanitized).getInt(28)); // xdmx
+        assertEquals(0x6D617870, ByteBuffer.wrap(sanitized).getInt(12)); // maxp unchanged
+    }
+
+    @Test public void sanitizePreservesFontsWithoutHdmx() {
+        byte[] valid = font(format4(false), false);
+        assertSame(valid, FontCoverage.sanitize(valid));
+    }
+
+    @Test public void sanitizeIgnoresNonFontOrTruncatedData() {
+        assertNull(FontCoverage.sanitize(null));
+        byte[] shortBytes = new byte[]{1, 2, 3};
+        assertSame(shortBytes, FontCoverage.sanitize(shortBytes));
+        byte[] notFont = new byte[20];
+        assertSame(notFont, FontCoverage.sanitize(notFont));
+    }
 }

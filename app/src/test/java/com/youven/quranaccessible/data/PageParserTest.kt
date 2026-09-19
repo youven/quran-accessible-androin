@@ -50,4 +50,51 @@ class PageParserTest {
         val root = JSONObject(fixture(1)); root.getJSONArray("verses").remove(6)
         PageParser.parse(1, listOf(root.toString()))
     }
+    @Test fun chapterStartingAtLineTwoHasHeaderOnLineOneAndNoExtraBasmala() {
+        val start = ChapterStart(80, 2)
+        assertEquals(1, start.headerLine)
+        assertNull(start.basmalaLine)
+    }
+    @Test fun mismatchedTotalRecordsDoesNotPreventValidPageFromParsing() {
+        val root = JSONObject(fixture(1))
+        root.getJSONObject("pagination").put("total_records", 5)
+        val page = PageParser.parse(1, listOf(root.toString()))
+        assertEquals(36, page.words.size)
+    }
+    @Test fun outOfOrderWordsWithinVerseDoNotCrashPageParsing() {
+        val root = JSONObject(fixture(1))
+        val verses = root.getJSONArray("verses")
+        val v1Words = verses.getJSONObject(1).getJSONArray("words")
+        v1Words.getJSONObject(0).put("line_number", 4)
+        v1Words.getJSONObject(1).put("line_number", 3)
+        val page = PageParser.parse(1, listOf(root.toString()))
+        assertEquals(36, page.words.size)
+    }
+    @Test fun canonicalPageSpecsReflectAccurateVerseBoundariesAndWordCounts() {
+        val p121 = MadaniPage.spec(121)
+        assertEquals("5:78", p121.firstVerse)
+        assertEquals("5:83", p121.lastVerse)
+        assertEquals(114, p121.wordCount)
+        assertEquals(listOf(5), p121.chapters)
+
+        val p122 = MadaniPage.spec(122)
+        assertEquals("5:84", p122.firstVerse)
+        assertEquals("5:90", p122.lastVerse)
+        assertEquals(133, p122.wordCount)
+        assertEquals(listOf(5), p122.chapters)
+
+        val p604 = MadaniPage.spec(604)
+        assertEquals("112:1", p604.firstVerse)
+        assertEquals("114:6", p604.lastVerse)
+        assertEquals(73, p604.wordCount)
+        assertEquals(listOf(112, 113, 114), p604.chapters)
+    }
+    @Test(expected = IllegalArgumentException::class)
+    fun pageMissingWordsIsStrictlyRejected() {
+        val root = JSONObject(fixture(1))
+        val verses = root.getJSONArray("verses")
+        val firstVerseWords = verses.getJSONObject(0).getJSONArray("words")
+        firstVerseWords.remove(0) // Remove a word
+        PageParser.parse(1, listOf(root.toString()))
+    }
 }
