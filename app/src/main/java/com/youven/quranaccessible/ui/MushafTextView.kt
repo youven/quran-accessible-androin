@@ -20,8 +20,17 @@ class MushafTextView(context: Context) : View(context) {
     private val viewport = PageViewport()
     private val ink = Paint(Paint.ANTI_ALIAS_FLAG)
     private val framePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ornamentPath = Path()
     private var loaded: LoadedPage? = null
+
+    var activeVerse: String? = null
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidate()
+            }
+        }
 
     private val pinch = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -169,7 +178,41 @@ class MushafTextView(context: Context) : View(context) {
 
         fun baseline(line: Int): Float = startTop + line * lineSpacing
 
-        // 4. Draw Quran verses text
+        // 4. Highlight active reciting verse in light brown (بني فاتح)
+        val currentActive = activeVerse
+        if (!currentActive.isNullOrBlank()) {
+            highlightPaint.style = Paint.Style.FILL
+            highlightPaint.color = Color.argb(175, 226, 206, 176) // Light brown / بني فاتح
+            ink.typeface = result.font
+            ink.textSize = fontSize
+
+            result.page.lines.forEach { (line, words) ->
+                if (words.any { it.verse == currentActive }) {
+                    val lineWidth = words.sumOf { ink.measureText(it.glyph).toDouble() }.toFloat()
+                    var right = (600f + lineWidth) / 2f
+                    var minX = Float.MAX_VALUE
+                    var maxX = Float.MIN_VALUE
+                    words.forEach { word ->
+                        val wWidth = ink.measureText(word.glyph)
+                        val wLeft = right - wWidth
+                        val wRight = right
+                        if (word.verse == currentActive) {
+                            minX = minOf(minX, wLeft)
+                            maxX = maxOf(maxX, wRight)
+                        }
+                        right -= wWidth
+                    }
+                    if (minX < maxX) {
+                        val bLine = baseline(line)
+                        val top = bLine - fontSize * 0.85f
+                        val bottom = bLine + fontSize * 0.28f
+                        canvas.drawRoundRect(minX - 4f, top, maxX + 4f, bottom, 8f, 8f, highlightPaint)
+                    }
+                }
+            }
+        }
+
+        // 5. Draw Quran verses text
         ink.color = Color.rgb(32, 39, 32)
         result.page.lines.forEach { (line, words) ->
             ink.typeface = result.font

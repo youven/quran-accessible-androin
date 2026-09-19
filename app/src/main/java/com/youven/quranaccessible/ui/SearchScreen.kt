@@ -33,17 +33,39 @@ import com.youven.quranaccessible.data.SurahInfo
 sealed interface SearchResultItem {
     data class PageMatch(val page: Int) : SearchResultItem
     data class SurahMatch(val surah: SurahInfo) : SearchResultItem
-    data class RubMatch(val snippet: String, val surahName: String, val verse: Int, val page: Int, val rubNumber: Int) : SearchResultItem
+    data class RubMatch(
+        val snippet: String,
+        val surahNumber: Int,
+        val surahName: String,
+        val verse: Int,
+        val page: Int,
+        val rubNumber: Int
+    ) : SearchResultItem
+    data class VerseMatch(
+        val surahNumber: Int,
+        val surahName: String,
+        val verseNumber: Int,
+        val page: Int,
+        val verseKey: String
+    ) : SearchResultItem
 }
+
+private data class PendingVerseLaunch(
+    val page: Int,
+    val verseKey: String,
+    val verseNumber: Int,
+    val surahName: String
+)
 
 @Composable
 fun SearchScreen(
     onClose: () -> Unit,
-    onOpenPage: (Int) -> Unit
+    onOpenPage: (page: Int, targetVerse: String?, autoPlay: Boolean) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
+    var pendingVerse by remember { mutableStateOf<PendingVerseLaunch?>(null) }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -60,7 +82,47 @@ fun SearchScreen(
                 list.add(SearchResultItem.PageMatch(parsedPage))
             }
 
-            // 2. Surah matches
+            // 2. Verse match by number (e.g. "2:255" or "2 255")
+            val colonMatch = Regex("""^(\d{1,3})[:\s]+(\d{1,3})$""").matchEntire(normalizeDigits(trimmed))
+            if (colonMatch != null) {
+                val ch = colonMatch.groupValues[1].toIntOrNull()
+                val v = colonMatch.groupValues[2].toIntOrNull()
+                if (ch != null && v != null && ch in 1..114) {
+                    val surah = QuranMetadata.SURAHS.find { it.number == ch }
+                    if (surah != null && v in 1..surah.versesCount) {
+                        val page = MadaniPage.pageForVerse(ch, v)
+                        list.add(SearchResultItem.VerseMatch(ch, surah.nameArabic, v, page, "$ch:$v"))
+                    }
+                }
+            }
+
+            // 3. Verse match by surah name + verse number (e.g. "البقرة 255" or "سورة البقرة 255")
+            val parts = trimmed.split(Regex("""[\s:]+"""))
+            if (parts.size >= 2) {
+                val verseDigits = normalizeDigits(parts.last())
+                val v = verseDigits.toIntOrNull()
+                if (v != null) {
+                    val surahPart = parts.dropLast(1).joinToString(" ")
+                        .replace("سورة", "")
+                        .replace("سوره", "")
+                        .trim()
+                    val normSurah = normalizeArabic(surahPart)
+                    if (normSurah.isNotEmpty()) {
+                        val matched = QuranMetadata.SURAHS.filter {
+                            normalizeArabic(it.nameArabic).contains(normSurah) ||
+                            it.nameEnglish.lowercase().contains(surahPart.lowercase())
+                        }
+                        for (s in matched) {
+                            if (v in 1..s.versesCount) {
+                                val page = MadaniPage.pageForVerse(s.number, v)
+                                list.add(SearchResultItem.VerseMatch(s.number, s.nameArabic, v, page, "${s.number}:$v"))
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Surah matches
             val normQuery = normalizeArabic(trimmed.lowercase())
             val matchedSurahs = QuranMetadata.SURAHS.filter { s ->
                 normalizeArabic(s.nameArabic).contains(normQuery) ||
@@ -68,19 +130,69 @@ fun SearchScreen(
             }
             matchedSurahs.forEach { list.add(SearchResultItem.SurahMatch(it)) }
 
-            // 3. Rub matches (snippets)
+            // 5. Rub matches (snippets)
             if (trimmed.length >= 2) {
                 val matchedRubs = QuranMetadata.RUBS.filter { r ->
                     normalizeArabic(r.snippet).contains(normQuery) ||
                     normalizeArabic(r.surahName).contains(normQuery)
                 }.take(20)
                 matchedRubs.forEach { r ->
-                    list.add(SearchResultItem.RubMatch(r.snippet, r.surahName, r.verseNumber, r.pageNumber, r.rubNumber))
+                    val surahNum = QuranMetadata.SURAHS.find { it.nameArabic == r.surahName }?.number ?: 1
+                    list.add(SearchResultItem.RubMatch(r.snippet, surahNum, r.surahName, r.verseNumber, r.pageNumber, r.rubNumber))
                 }
             }
 
             list
         }
+    }
+
+    // Dialog when user selects a verse not at the page start
+    pendingVerse?.let { pv ->
+        val pageSpec = MadaniPage.spec(pv.page)
+        AlertDialog(
+            onDismissRequest = { pendingVerse = null },
+            title = {
+                Text(
+                    text = "بدء القراءة والاستماع",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Color(0xFF1C2520)
+                )
+            },
+            text = {
+                Text(
+                    text = "الآية المحددة (سورة ${pv.surahName}، آية ${QuranMetadata.toArabicDigits(pv.verseNumber)}) ليست في بداية الصفحة (صفحة ${QuranMetadata.toArabicDigits(pv.page)}).\n\nمن أين تفضل أن تبدأ القراءة والاستماع؟",
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                    color = Color(0xFF374151)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val target = pv
+                        pendingVerse = null
+                        onOpenPage(target.page, target.verseKey, true)
+                        onClose()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D8A74))
+                ) {
+                    Text("من الآية المحددة (آية ${QuranMetadata.toArabicDigits(pv.verseNumber)})")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        val target = pv
+                        pendingVerse = null
+                        onOpenPage(target.page, pageSpec.firstVerse, true)
+                        onClose()
+                    }
+                ) {
+                    Text("من بداية الصفحة")
+                }
+            }
+        )
     }
 
     Column(
@@ -113,7 +225,7 @@ fun SearchScreen(
                     onValueChange = { query = it },
                     placeholder = {
                         Text(
-                            text = "ابحث في القرآن",
+                            text = "ابحث في القرآن (سورة، آية، صفحة)",
                             color = Color(0xFF8F9B94),
                             fontSize = 17.sp
                         )
@@ -160,7 +272,7 @@ fun SearchScreen(
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        text = "ابحث بالاسم (الفاتحة)، أو برقم الصفحة، أو بكلمات الآية",
+                        text = "ابحث بالسورة (الفاتحة)، أو بالآية (البقرة 255)، أو برقم الصفحة",
                         color = Color(0xFF8F9B94),
                         fontSize = 15.sp
                     )
@@ -184,6 +296,56 @@ fun SearchScreen(
             ) {
                 items(results) { item ->
                     when (item) {
+                        is SearchResultItem.VerseMatch -> {
+                            val isFirstOnPage = MadaniPage.spec(item.page).firstVerse == item.verseKey
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        text = "سورة ${item.surahName} · آية ${QuranMetadata.toArabicDigits(item.verseNumber)}",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = Color(0xFF1C2520)
+                                    )
+                                },
+                                supportingContent = {
+                                    Text(
+                                        text = "صفحة ${QuranMetadata.toArabicDigits(item.page)}${if (isFirstOnPage) " (بداية الصفحة)" else ""}",
+                                        color = Color(0xFF6B7770),
+                                        fontSize = 13.sp
+                                    )
+                                },
+                                leadingContent = {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFFEDE0D0),
+                                        modifier = Modifier.size(38.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = QuranMetadata.toArabicDigits(item.verseNumber),
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF725B2A)
+                                            )
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.clickable {
+                                    if (isFirstOnPage) {
+                                        onOpenPage(item.page, item.verseKey, true)
+                                        onClose()
+                                    } else {
+                                        pendingVerse = PendingVerseLaunch(
+                                            page = item.page,
+                                            verseKey = item.verseKey,
+                                            verseNumber = item.verseNumber,
+                                            surahName = item.surahName
+                                        )
+                                    }
+                                }
+                            )
+                            HorizontalDivider(color = Color(0xFFE8E5DD), thickness = 0.5.dp)
+                        }
                         is SearchResultItem.PageMatch -> {
                             ListItem(
                                 headlineContent = { Text("الانتقال إلى صفحة ${QuranMetadata.toArabicDigits(item.page)}", fontWeight = FontWeight.Bold) },
@@ -196,7 +358,7 @@ fun SearchScreen(
                                     }
                                 },
                                 modifier = Modifier.clickable {
-                                    onOpenPage(item.page)
+                                    onOpenPage(item.page, null, false)
                                     onClose()
                                 }
                             )
@@ -236,13 +398,15 @@ fun SearchScreen(
                                     }
                                 },
                                 modifier = Modifier.clickable {
-                                    onOpenPage(item.surah.startPage)
+                                    onOpenPage(item.surah.startPage, null, false)
                                     onClose()
                                 }
                             )
                             HorizontalDivider(color = Color(0xFFE8E5DD), thickness = 0.5.dp)
                         }
                         is SearchResultItem.RubMatch -> {
+                            val verseKey = "${item.surahNumber}:${item.verse}"
+                            val isFirstOnPage = MadaniPage.spec(item.page).firstVerse == verseKey
                             ListItem(
                                 headlineContent = {
                                     Text(
@@ -275,8 +439,17 @@ fun SearchScreen(
                                     }
                                 },
                                 modifier = Modifier.clickable {
-                                    onOpenPage(item.page)
-                                    onClose()
+                                    if (isFirstOnPage) {
+                                        onOpenPage(item.page, verseKey, true)
+                                        onClose()
+                                    } else {
+                                        pendingVerse = PendingVerseLaunch(
+                                            page = item.page,
+                                            verseKey = verseKey,
+                                            verseNumber = item.verse,
+                                            surahName = item.surahName
+                                        )
+                                    }
                                 }
                             )
                             HorizontalDivider(color = Color(0xFFE8E5DD), thickness = 0.5.dp)
@@ -286,6 +459,16 @@ fun SearchScreen(
             }
         }
     }
+}
+
+private fun normalizeDigits(text: String): String {
+    return text.map { ch ->
+        when (ch) {
+            '٠' -> '0'; '١' -> '1'; '٢' -> '2'; '٣' -> '3'; '٤' -> '4'
+            '٥' -> '5'; '٦' -> '6'; '٧' -> '7'; '٨' -> '8'; '٩' -> '9'
+            else -> ch
+        }
+    }.joinToString("")
 }
 
 private fun normalizeArabic(text: String): String {

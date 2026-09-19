@@ -37,6 +37,7 @@ import com.youven.quranaccessible.R
 import com.youven.quranaccessible.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 private sealed interface PageState {
@@ -45,20 +46,11 @@ private sealed interface PageState {
     data class Ready(val result: LoadedPage) : PageState
 }
 
-private val RECITERS = listOf(
-    "أبو بكر الشاطري",
-    "مشاري راشد العفاسي",
-    "عبد الباسط عبد الصمد",
-    "محمود خليل الحصري",
-    "سعد الغامدي",
-    "ماهر المعيقلي",
-    "أحمد بن علي العجمي",
-    "سعود الشريم"
-)
-
 @Composable
 fun ReaderScreen(
     page: Int,
+    initialVerse: String? = null,
+    autoPlay: Boolean = false,
     onPageChange: (Int) -> Unit,
     repository: PageRepository,
     easyMode: Boolean,
@@ -74,6 +66,9 @@ fun ReaderScreen(
     BackHandler(onBack = onBack)
 
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val audioManager = remember { AudioRecitationManager(context) }
+
     var accessible by rememberSaveable {
         mutableStateOf(easyMode || (context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager).isTouchExplorationEnabled)
     }
@@ -87,9 +82,12 @@ fun ReaderScreen(
     var showReciterDialog by remember { mutableStateOf(false) }
     var overflowMenuExpanded by remember { mutableStateOf(false) }
 
-    // Audio playback state
-    var selectedReciter by rememberSaveable { mutableStateOf("أبو بكر الشاطري") }
-    var isPlaying by rememberSaveable { mutableStateOf(false) }
+    // Audio recitation state
+    var recitersList by remember { mutableStateOf(AudioRecitationManager.DEFAULT_RECITERS) }
+    var selectedReciterObj by remember { mutableStateOf(AudioRecitationManager.DEFAULT_RECITERS.first()) }
+    var isPlayingAudio by remember { mutableStateOf(false) }
+    var activeVerseKey by remember { mutableStateOf<String?>(initialVerse) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // Overlay auto-toggling bars state (Single tap on page toggles both)
     var barsVisible by rememberSaveable { mutableStateOf(true) }
@@ -115,11 +113,57 @@ fun ReaderScreen(
 
     val currentPage = pagerState.currentPage + 1
 
+    // Load dynamic reciters from Quran.com API
+    LaunchedEffect(Unit) {
+        val fetched = audioManager.loadReciters()
+        if (fetched.isNotEmpty()) {
+            recitersList = fetched
+            val matched = fetched.find { it.id == selectedReciterObj.id } ?: fetched.first()
+            selectedReciterObj = matched
+        }
+    }
+
+    // Setup audio manager event listeners
+    LaunchedEffect(audioManager) {
+        audioManager.onVerseChangeListener = { verse ->
+            activeVerseKey = verse
+        }
+        audioManager.onPlaybackStateChangeListener = { playing ->
+            isPlayingAudio = playing
+        }
+        audioManager.onPageChangeListener = { nextPage ->
+            coroutineScope.launch {
+                pagerState.scrollToPage((nextPage - 1).coerceIn(0, 603))
+            }
+        }
+        audioManager.onErrorListener = { errorMsg ->
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar(errorMsg)
+            }
+        }
+    }
+
+    // Handle initial auto-play from search or external action
+    LaunchedEffect(initialVerse, autoPlay) {
+        if (autoPlay && !initialVerse.isNullOrBlank()) {
+            activeVerseKey = initialVerse
+            audioManager.startPageRecitation(
+                reciterId = selectedReciterObj.id,
+                page = page,
+                startVerseKey = initialVerse
+            )
+        }
+    }
+
     // Synchronize pager page change with app state
     LaunchedEffect(pagerState.currentPage) {
         val newPage = pagerState.currentPage + 1
         if (newPage != page) {
             onPageChange(newPage)
+        }
+        // If reciting and user swiped to another page, continue recitation on new page
+        if (isPlayingAudio && audioManager.currentPage != newPage) {
+            audioManager.startPageRecitation(selectedReciterObj.id, newPage, null)
         }
     }
 
@@ -128,6 +172,12 @@ fun ReaderScreen(
         val target = (page - 1).coerceIn(0, 603)
         if (pagerState.currentPage != target) {
             pagerState.scrollToPage(target)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            audioManager.release()
         }
     }
 
@@ -155,6 +205,7 @@ fun ReaderScreen(
                 repository = repository,
                 accessible = accessible,
                 textSize = textSize,
+                activeVerse = if (pageNum == currentPage) activeVerseKey else null,
                 onPageLoaded = { onPageLoaded(pageNum) },
                 onTap = { barsVisible = !barsVisible },
                 onFastScroll = { rubBadgeTriggerTime = System.currentTimeMillis() },
@@ -302,10 +353,11 @@ fun ReaderScreen(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = selectedReciter,
+                                text = selectedReciterObj.displayName,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = Color(0xFF1C2520)
+                                color = Color(0xFF1C2520),
+                                maxLines = 1
                             )
                             Icon(
                                 imageVector = Icons.Default.ArrowDropDown,
@@ -332,15 +384,29 @@ fun ReaderScreen(
 
                         // Audio Play / Pause Button
                         FilledIconButton(
-                            onClick = { isPlaying = !isPlaying },
+                            onClick = {
+                                if (isPlayingAudio) {
+                                    audioManager.pause()
+                                } else {
+                                    if (audioManager.currentPage == currentPage && audioManager.currentVerseKey != null) {
+                                        audioManager.resume()
+                                    } else {
+                                        audioManager.startPageRecitation(
+                                            reciterId = selectedReciterObj.id,
+                                            page = currentPage,
+                                            startVerseKey = activeVerseKey
+                                        )
+                                    }
+                                }
+                            },
                             colors = IconButtonDefaults.filledIconButtonColors(
                                 containerColor = Color(0xFF0D8A74)
                             ),
                             modifier = Modifier.size(38.dp)
                         ) {
                             Icon(
-                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (isPlaying) "إيقاف مؤقت" else "تشغيل التلاوة",
+                                imageVector = if (isPlayingAudio) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlayingAudio) "إيقاف مؤقت" else "تشغيل التلاوة",
                                 tint = Color.White
                             )
                         }
@@ -383,6 +449,14 @@ fun ReaderScreen(
                 }
             }
         }
+
+        // --- 5. Snackbar Host for audio notifications and error messages ---
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = if (barsVisible) 84.dp else 20.dp)
+        )
     }
 
     // --- Dialogs ---
@@ -399,8 +473,21 @@ fun ReaderScreen(
         )
     }
 
-    // Reciter Selection Dialog
+    // Reciter Selection Dialog with Quran.com Reciters & Live Search
     if (showReciterDialog) {
+        var filterText by remember { mutableStateOf("") }
+        val filteredReciters = remember(filterText, recitersList) {
+            if (filterText.isBlank()) recitersList
+            else {
+                val q = filterText.trim().lowercase()
+                recitersList.filter {
+                    it.nameArabic.contains(q) ||
+                    it.englishName.lowercase().contains(q) ||
+                    (it.style?.contains(q) == true)
+                }
+            }
+        }
+
         AlertDialog(
             onDismissRequest = { showReciterDialog = false },
             title = {
@@ -412,42 +499,77 @@ fun ReaderScreen(
                 )
             },
             text = {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 440.dp)
                 ) {
-                    items(RECITERS) { reciter ->
-                        val isSelected = reciter == selectedReciter
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isSelected) Color(0xFFE8F5F2) else Color.Transparent,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selectedReciter = reciter
-                                    showReciterDialog = false
-                                }
-                        ) {
-                            Row(
+                    OutlinedTextField(
+                        value = filterText,
+                        onValueChange = { filterText = it },
+                        placeholder = { Text("ابحث عن قارئ…", fontSize = 14.sp) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(filteredReciters, key = { it.id }) { reciter ->
+                            val isSelected = reciter.id == selectedReciterObj.id
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) Color(0xFFE8F5F2) else Color.Transparent,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                    .clickable {
+                                        selectedReciterObj = reciter
+                                        showReciterDialog = false
+                                        if (isPlayingAudio) {
+                                            audioManager.startPageRecitation(
+                                                reciterId = reciter.id,
+                                                page = currentPage,
+                                                startVerseKey = activeVerseKey
+                                            )
+                                        }
+                                    }
                             ) {
-                                Text(
-                                    text = reciter,
-                                    fontSize = 16.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) Color(0xFF0D8A74) else Color(0xFF1C2520)
-                                )
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = Color(0xFF0D8A74),
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = reciter.nameArabic,
+                                            fontSize = 15.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) Color(0xFF0D8A74) else Color(0xFF1C2520)
+                                        )
+                                        if (!reciter.style.isNullOrBlank() && reciter.style != "None") {
+                                            Text(
+                                                text = reciter.style,
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF6B7280)
+                                            )
+                                        }
+                                    }
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color(0xFF0D8A74),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -456,7 +578,7 @@ fun ReaderScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showReciterDialog = false }) {
-                    Text("إلغاء")
+                    Text("إغلاق")
                 }
             }
         )
@@ -582,6 +704,7 @@ private fun QuranPageView(
     repository: PageRepository,
     accessible: Boolean,
     textSize: Int,
+    activeVerse: String? = null,
     onPageLoaded: () -> Unit,
     onTap: () -> Unit,
     onFastScroll: () -> Unit,
@@ -666,7 +789,7 @@ private fun QuranPageView(
                             .verticalScroll(rememberScrollState())
                             .clickable { onTap() }
                             .padding(horizontal = 14.dp, vertical = 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(20.dp)
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         current.result.page.starts.forEach { start ->
                             val surahName = current.result.chapterNames[start.chapter] ?: ""
@@ -699,17 +822,34 @@ private fun QuranPageView(
                         }
 
                         current.result.page.words.groupBy { it.verse }.forEach { (verse, words) ->
-                            Text(
-                                words.joinToString(" ") { it.text },
-                                fontSize = textSize.sp,
-                                lineHeight = (textSize * 1.85).sp,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Text(
-                                "${current.result.chapterNames[verse.substringBefore(':').toInt()]} · آية ${verse.substringAfter(':')}",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = Color(0xFF0D8A74)
-                            )
+                            val isVerseActive = (activeVerse == verse)
+                            Surface(
+                                color = if (isVerseActive) Color(0xFFEDE0D0) else Color.Transparent,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(if (isVerseActive) 8.dp else 0.dp)
+                                ) {
+                                    Text(
+                                        words.joinToString(" ") { it.text },
+                                        fontSize = textSize.sp,
+                                        lineHeight = (textSize * 1.85).sp,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        "${current.result.chapterNames[verse.substringBefore(':').toInt()]} · آية ${verse.substringAfter(':')}",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = if (isVerseActive) Color(0xFF725B2A) else Color(0xFF0D8A74),
+                                        fontWeight = if (isVerseActive) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
                         }
                     }
                 } else {
@@ -717,6 +857,7 @@ private fun QuranPageView(
                         factory = { ctx ->
                             MushafTextView(ctx).also { v ->
                                 onRegisterView(v)
+                                v.activeVerse = activeVerse
                                 v.onScrollListener = { dx, dy ->
                                     if (abs(dy) > 15f || abs(dx) > 15f) {
                                         onFastScroll()
@@ -729,6 +870,7 @@ private fun QuranPageView(
                         },
                         update = { v ->
                             v.bind(current.result)
+                            v.activeVerse = activeVerse
                             onRegisterView(v)
                             v.onScrollListener = { dx, dy ->
                                 if (abs(dy) > 15f || abs(dx) > 15f) {

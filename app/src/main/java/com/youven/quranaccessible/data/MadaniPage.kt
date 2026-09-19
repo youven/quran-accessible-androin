@@ -37,6 +37,23 @@ object MadaniPage {
         return PageSpec("$fCh:$fV", "$lCh:$lV", words)
     }
 
+    /** Finds the Quran page (1..604) that contains the specified chapter and verse number. */
+    fun pageForVerse(chapter: Int, verse: Int): Int {
+        for (p in 1..COUNT) {
+            val offset = (p - 1) * 5
+            val fCh = SPECS[offset].toInt()
+            val fV = SPECS[offset + 1].toInt()
+            val lCh = SPECS[offset + 2].toInt()
+            val lV = SPECS[offset + 3].toInt()
+            if (chapter in fCh..lCh) {
+                val afterStart = if (chapter == fCh) verse >= fV else true
+                val beforeEnd = if (chapter == lCh) verse <= lV else true
+                if (afterStart && beforeEnd) return p
+            }
+        }
+        return 1
+    }
+
     private val SPECS = shortArrayOf(
         1, 1, 1, 7, 36, 2, 1, 2, 5, 41, 2, 6, 2, 16, 138,
         2, 17, 2, 24, 142, 2, 25, 2, 29, 130, 2, 30, 2, 37, 146,

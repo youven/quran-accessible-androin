@@ -89,6 +89,9 @@ class MainActivity : ComponentActivity() {
                 preferences.edit().putStringSet("bookmarks", bookmarks.map(Int::toString).toSet()).apply()
             }
 
+            var targetVerseKey by rememberSaveable { mutableStateOf<String?>(null) }
+            var autoPlayAudio by rememberSaveable { mutableStateOf(false) }
+
             // Force RTL across the entire application
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 MaterialTheme(
@@ -112,8 +115,10 @@ class MainActivity : ComponentActivity() {
                                 BackHandler { isSearching = false }
                                 SearchScreen(
                                     onClose = { isSearching = false },
-                                    onOpenPage = { targetPage ->
+                                    onOpenPage = { targetPage, targetVerse, autoPlay ->
                                         page = targetPage
+                                        targetVerseKey = targetVerse
+                                        autoPlayAudio = autoPlay
                                         recordPageVisit(targetPage)
                                         isSearching = false
                                         isReading = true
@@ -123,8 +128,12 @@ class MainActivity : ComponentActivity() {
                             isReading -> {
                                 ReaderScreen(
                                     page = page,
+                                    initialVerse = targetVerseKey,
+                                    autoPlay = autoPlayAudio,
                                     onPageChange = { targetPage ->
                                         page = targetPage
+                                        targetVerseKey = null
+                                        autoPlayAudio = false
                                         recordPageVisit(targetPage)
                                     },
                                     repository = repository,
@@ -149,6 +158,8 @@ class MainActivity : ComponentActivity() {
                                     recents = recents,
                                     onOpenPage = { targetPage ->
                                         page = targetPage
+                                        targetVerseKey = null
+                                        autoPlayAudio = false
                                         recordPageVisit(targetPage)
                                         isReading = true
                                     },

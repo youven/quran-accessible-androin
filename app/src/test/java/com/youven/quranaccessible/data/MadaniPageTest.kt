@@ -29,4 +29,13 @@ class MadaniPageTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun rejectsInvalidDownloadPage() { MadaniPage.fontUrl(605) }
+
+    @Test fun mapsChapterAndVerseToAccuratePage() {
+        assertEquals(1, MadaniPage.pageForVerse(1, 1))
+        assertEquals(1, MadaniPage.pageForVerse(1, 7))
+        assertEquals(2, MadaniPage.pageForVerse(2, 1))
+        assertEquals(42, MadaniPage.pageForVerse(2, 255))
+        assertEquals(604, MadaniPage.pageForVerse(114, 6))
+        assertEquals(604, MadaniPage.pageForVerse(112, 1))
+    }
 }
