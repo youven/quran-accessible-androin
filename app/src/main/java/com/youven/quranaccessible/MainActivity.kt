@@ -1,111 +1,187 @@
 package com.youven.quranaccessible
 
-import android.os.Bundle
 import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModelProvider
+import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
 import com.youven.quranaccessible.data.MadaniPage
 import com.youven.quranaccessible.data.PageRepository
-import com.youven.quranaccessible.ui.ReaderScreen
+import com.youven.quranaccessible.ui.*
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
         val preferences = getSharedPreferences("reading_settings", MODE_PRIVATE)
         val repository = ViewModelProvider(this)[ReaderModel::class.java].repository
+
         setContent {
-            var easyMode by rememberSaveable { mutableStateOf(preferences.getBoolean("easy_mode", true)) }
-            var reading by rememberSaveable { mutableStateOf(false) }
+            var easyMode by rememberSaveable {
+                mutableStateOf(preferences.getBoolean("easy_mode", false))
+            }
+            var isReading by rememberSaveable { mutableStateOf(false) }
+            var isSearching by rememberSaveable { mutableStateOf(false) }
+
             var lastRead by rememberSaveable {
                 mutableIntStateOf(MadaniPage.restoredPage(preferences.getInt("last_page", 1)))
             }
             var page by rememberSaveable { mutableIntStateOf(lastRead) }
+
             var bookmarks by remember {
-                mutableStateOf(preferences.getStringSet("bookmarks", emptySet()).orEmpty()
-                    .mapNotNull(MadaniPage::parse).toSet())
+                mutableStateOf(
+                    preferences.getStringSet("bookmarks", emptySet()).orEmpty()
+                        .mapNotNull(MadaniPage::parse).toSet()
+                )
             }
+
+            var recents by remember {
+                val raw = preferences.getString("recents", "") ?: ""
+                val list = if (raw.isBlank()) {
+                    listOf(lastRead)
+                } else {
+                    raw.split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it in 1..604 }
+                }
+                mutableStateOf(list.ifEmpty { listOf(1) })
+            }
+
+            // Global Dialog States
+            var showQuickJump by remember { mutableStateOf(false) }
+            var showSettings by remember { mutableStateOf(false) }
+            var showHelp by remember { mutableStateOf(false) }
+            var showAbout by remember { mutableStateOf(false) }
+
+            fun recordPageVisit(visitedPage: Int) {
+                lastRead = visitedPage
+                preferences.edit().putInt("last_page", visitedPage).apply()
+                val updated = (listOf(visitedPage) + (recents - visitedPage)).take(20)
+                recents = updated
+                preferences.edit().putString("recents", updated.joinToString(",")).apply()
+            }
+
+            fun toggleBookmark(targetPage: Int) {
+                bookmarks = if (targetPage in bookmarks) bookmarks - targetPage else bookmarks + targetPage
+                preferences.edit().putStringSet("bookmarks", bookmarks.map(Int::toString).toSet()).apply()
+            }
+
+            // Force RTL across the entire application
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                MaterialTheme(colorScheme = lightColorScheme(
-                    primary = Color(0xFF185B49), onPrimary = Color.White,
-                    primaryContainer = Color(0xFFDDECE2), onPrimaryContainer = Color(0xFF12392E),
-                    background = Color(0xFFFAF7EF), surface = Color(0xFFFAF7EF),
-                    onSurface = Color(0xFF202D26), secondary = Color(0xFF725B2A)
-                )) {
-                    Surface(Modifier.fillMaxSize()) {
-                        if (reading) {
-                            ReaderScreen(
-                                page = page, onPageChange = { page = it },
-                                repository = repository, easyMode = easyMode,
-                                bookmarks = bookmarks,
-                                onToggleBookmark = {
-                                    bookmarks = if (page in bookmarks) bookmarks - page else bookmarks + page
-                                    preferences.edit().putStringSet("bookmarks", bookmarks.map(Int::toString).toSet()).apply()
-                                },
-                                onPageLoaded = { loaded ->
-                                    lastRead = loaded
-                                    preferences.edit().putInt("last_page", loaded).apply()
-                                },
-                                onBack = { reading = false }
-                            )
-                        } else {
-                            Column(
-                                Modifier.fillMaxSize().safeDrawingPadding()
-                                    .verticalScroll(rememberScrollState()).padding(24.dp),
-                                verticalArrangement = Arrangement.spacedBy(24.dp)
-                            ) {
-                                Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineLarge,
-                                    modifier = Modifier.semantics { heading() })
-                                Text(stringResource(R.string.welcome), style = MaterialTheme.typography.headlineSmall)
-                                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                                    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                        Text(stringResource(R.string.edition_title), fontSize = if (easyMode) 26.sp else 22.sp)
-                                        Text(stringResource(R.string.edition_detail), fontSize = 18.sp)
-                                        Button(onClick = { page = lastRead; reading = true },
-                                            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
-                                            Text(stringResource(R.string.resume_page, lastRead), fontSize = 20.sp)
-                                        }
-                                        OutlinedButton(onClick = { page = 1; reading = true },
-                                            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-                                            Text(stringResource(R.string.start_reading))
-                                        }
+                MaterialTheme(
+                    colorScheme = lightColorScheme(
+                        primary = Color(0xFF0D8A74),
+                        onPrimary = Color.White,
+                        primaryContainer = Color(0xFFDDECE2),
+                        onPrimaryContainer = Color(0xFF0A584B),
+                        background = Color(0xFFFAF8F5),
+                        surface = Color(0xFFFAF8F5),
+                        onSurface = Color(0xFF1C2520),
+                        secondary = Color(0xFF0D8A74)
+                    )
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = Color(0xFFFAF8F5)
+                    ) {
+                        when {
+                            isSearching -> {
+                                BackHandler { isSearching = false }
+                                SearchScreen(
+                                    onClose = { isSearching = false },
+                                    onOpenPage = { targetPage ->
+                                        page = targetPage
+                                        recordPageVisit(targetPage)
+                                        isSearching = false
+                                        isReading = true
                                     }
-                                }
-                                Row(Modifier.fillMaxWidth().toggleable(value = easyMode, role = Role.Switch,
-                                    onValueChange = {
+                                )
+                            }
+                            isReading -> {
+                                ReaderScreen(
+                                    page = page,
+                                    onPageChange = { targetPage ->
+                                        page = targetPage
+                                        recordPageVisit(targetPage)
+                                    },
+                                    repository = repository,
+                                    easyMode = easyMode,
+                                    onToggleEasyMode = {
                                         easyMode = it
                                         preferences.edit().putBoolean("easy_mode", it).apply()
-                                    }).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(stringResource(R.string.easy_mode), fontSize = 22.sp)
-                                        Text(stringResource(R.string.easy_description))
-                                    }
-                                    Switch(checked = easyMode, onCheckedChange = null)
-                                }
-                                Text(stringResource(R.string.text_reader_notice), fontSize = 18.sp, lineHeight = 28.sp)
-                                Text(stringResource(R.string.source_credit), style = MaterialTheme.typography.bodyMedium)
+                                    },
+                                    bookmarks = bookmarks,
+                                    onToggleBookmark = { toggleBookmark(page) },
+                                    onPageLoaded = { loaded -> recordPageVisit(loaded) },
+                                    onBack = { isReading = false },
+                                    onOpenSettings = { showSettings = true },
+                                    onOpenHelp = { showHelp = true },
+                                    onOpenAbout = { showAbout = true }
+                                )
                             }
+                            else -> {
+                                HomeScreen(
+                                    lastReadPage = lastRead,
+                                    bookmarks = bookmarks,
+                                    recents = recents,
+                                    onOpenPage = { targetPage ->
+                                        page = targetPage
+                                        recordPageVisit(targetPage)
+                                        isReading = true
+                                    },
+                                    onOpenSearch = { isSearching = true },
+                                    onToggleBookmark = { toggleBookmark(it) },
+                                    onQuickJump = { showQuickJump = true },
+                                    onOpenSettings = { showSettings = true },
+                                    onOpenHelp = { showHelp = true },
+                                    onOpenAbout = { showAbout = true }
+                                )
+                            }
+                        }
+
+                        // Dialogs accessible from anywhere
+                        if (showQuickJump) {
+                            QuickJumpDialog(
+                                currentPage = page,
+                                onDismiss = { showQuickJump = false },
+                                onJumpToPage = { targetPage ->
+                                    page = targetPage
+                                    recordPageVisit(targetPage)
+                                    isReading = true
+                                    showQuickJump = false
+                                }
+                            )
+                        }
+
+                        if (showSettings) {
+                            SettingsDialog(
+                                easyMode = easyMode,
+                                onToggleEasyMode = {
+                                    easyMode = it
+                                    preferences.edit().putBoolean("easy_mode", it).apply()
+                                },
+                                onDismiss = { showSettings = false }
+                            )
+                        }
+
+                        if (showHelp) {
+                            HelpDialog(onDismiss = { showHelp = false })
+                        }
+
+                        if (showAbout) {
+                            AboutDialog(onDismiss = { showAbout = false })
                         }
                     }
                 }

@@ -21,17 +21,25 @@ class MushafTextView(context: Context) : View(context) {
             viewport.zoom(detector.scaleFactor, detector.focusX, detector.focusY); invalidate(); return true
         }
     })
+    var onScrollListener: ((distanceX: Float, distanceY: Float) -> Unit)? = null
+    var onTapListener: (() -> Unit)? = null
+
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
             if (!pinch.isInProgress) { viewport.pan(-distanceX, -distanceY); invalidate() }
+            onScrollListener?.invoke(distanceX, distanceY)
             return true
         }
         override fun onDoubleTap(e: MotionEvent): Boolean {
             if (viewport.scale > viewport.minimum * 1.1f) viewport.reset() else viewport.zoom(2f, e.x, e.y)
             invalidate(); return true
         }
-        override fun onSingleTapUp(e: MotionEvent): Boolean { performClick(); return true }
+        override fun onSingleTapUp(e: MotionEvent): Boolean {
+            performClick()
+            onTapListener?.invoke()
+            return true
+        }
     })
     init {
         // The adjacent accessible reading mode exposes actual Unicode, never QCF codes.
