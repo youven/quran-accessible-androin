@@ -7,14 +7,20 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import org.json.JSONObject
 import org.json.JSONArray
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.coroutineContext
 
 data class LoadedPage(val page: TextPage, val font: Typeface, val basmalaFont: Typeface, val titleFont: Typeface, val chapterNames: Map<Int, String>)
@@ -81,6 +87,72 @@ class PageRepository(private val temporaryDirectory: File) {
                 while (pages.size > 8) pages.remove(pages.keys.first())
             }
         }
+    }
+
+    /** Checks whether both text and glyph font for a page are downloaded and ready offline. */
+    fun isPageCached(number: Int): Boolean {
+        val textFile = File(temporaryDirectory, "page-$number-complete-v3.json")
+        val fontFile = File(temporaryDirectory, "qcf-v2-page-$number.ttf")
+        return textFile.isFile && textFile.length() > 0L && fontFile.isFile && fontFile.length() > 0L
+    }
+
+    /** Returns the total count of fully cached pages out of 604. */
+    fun getCachedPagesCount(): Int {
+        val files = temporaryDirectory.list() ?: return 0
+        val set = files.toHashSet()
+        var count = 0
+        for (i in 1..604) {
+            if ("page-$i-complete-v3.json" in set && "qcf-v2-page-$i.ttf" in set) {
+                count++
+            }
+        }
+        return count
+    }
+
+    /**
+     * Downloads the complete Quran (all 604 pages, text, fonts, and chapters) for offline reading.
+     * Downloads in parallel with concurrency of 3, skipping any pages already cached.
+     * Invokes [onProgress] with (downloadedPagesCount, 604, currentWorkingPage).
+     */
+    suspend fun downloadAllPages(
+        onProgress: (downloaded: Int, total: Int, currentWorkingPage: Int) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        val total = 604
+        val semaphore = Semaphore(3)
+        val initialCount = getCachedPagesCount()
+        val downloadedCounter = AtomicInteger(initialCount)
+        onProgress(initialCount, total, 1)
+
+        // Ensure common fonts, basmala, and chapter names are loaded first
+        try {
+            load(1)
+        } catch (c: CancellationException) {
+            throw c
+        } catch (_: Exception) {}
+
+        coroutineScope {
+            val jobs = (1..604).map { pageNumber ->
+                async {
+                    if (isPageCached(pageNumber)) {
+                        return@async
+                    }
+                    semaphore.withPermit {
+                        ensureActive()
+                        try {
+                            load(pageNumber)
+                            val currentCount = downloadedCounter.incrementAndGet()
+                            onProgress(currentCount, total, pageNumber)
+                        } catch (c: CancellationException) {
+                            throw c
+                        } catch (e: Exception) {
+                            Log.w("QuranPages", "Offline download error on page $pageNumber", e)
+                        }
+                    }
+                }
+            }
+            jobs.awaitAll()
+        }
+        onProgress(getCachedPagesCount(), total, 604)
     }
 
     private suspend fun loadTextPage(number: Int): TextPage {

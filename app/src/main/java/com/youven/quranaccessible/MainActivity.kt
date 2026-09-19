@@ -18,9 +18,13 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
 import com.youven.quranaccessible.data.MadaniPage
 import com.youven.quranaccessible.data.PageRepository
 import com.youven.quranaccessible.ui.*
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,7 +32,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val preferences = getSharedPreferences("reading_settings", MODE_PRIVATE)
-        val repository = ViewModelProvider(this)[ReaderModel::class.java].repository
+        val readerModel = ViewModelProvider(this)[ReaderModel::class.java]
+        val repository = readerModel.repository
 
         setContent {
             var easyMode by rememberSaveable {
@@ -64,6 +69,12 @@ class MainActivity : ComponentActivity() {
             var showSettings by remember { mutableStateOf(false) }
             var showHelp by remember { mutableStateOf(false) }
             var showAbout by remember { mutableStateOf(false) }
+
+            // First app launch download prompt state
+            var showFirstLaunchPrompt by remember {
+                val alreadyShown = preferences.getBoolean("first_launch_prompt_shown", false)
+                mutableStateOf(!alreadyShown && !readerModel.isFullyDownloaded)
+            }
 
             fun recordPageVisit(visitedPage: Int) {
                 lastRead = visitedPage
@@ -152,6 +163,25 @@ class MainActivity : ComponentActivity() {
                         }
 
                         // Dialogs accessible from anywhere
+                        if (showFirstLaunchPrompt) {
+                            FirstLaunchDownloadDialog(
+                                downloadedPagesCount = readerModel.downloadedCount,
+                                isDownloading = readerModel.isDownloading,
+                                downloadPercentage = readerModel.downloadPercentage,
+                                onStartDownload = {
+                                    preferences.edit().putBoolean("first_launch_prompt_shown", true).apply()
+                                    readerModel.startFullDownload()
+                                },
+                                onCancelDownload = {
+                                    readerModel.cancelFullDownload()
+                                },
+                                onDismiss = {
+                                    preferences.edit().putBoolean("first_launch_prompt_shown", true).apply()
+                                    showFirstLaunchPrompt = false
+                                }
+                            )
+                        }
+
                         if (showQuickJump) {
                             QuickJumpDialog(
                                 currentPage = page,
@@ -172,6 +202,15 @@ class MainActivity : ComponentActivity() {
                                     easyMode = it
                                     preferences.edit().putBoolean("easy_mode", it).apply()
                                 },
+                                downloadedPagesCount = readerModel.downloadedCount,
+                                isDownloading = readerModel.isDownloading,
+                                downloadPercentage = readerModel.downloadPercentage,
+                                onStartDownload = {
+                                    readerModel.startFullDownload()
+                                },
+                                onCancelDownload = {
+                                    readerModel.cancelFullDownload()
+                                },
                                 onDismiss = { showSettings = false }
                             )
                         }
@@ -190,7 +229,67 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** Keeps page fonts and text across rotation without retaining an Activity. */
+/**
+ * Manages persistent storage and full offline downloading of the Holy Quran across configuration changes.
+ */
 class ReaderModel(application: Application) : AndroidViewModel(application) {
-    val repository = PageRepository(application.cacheDir)
+    val repository: PageRepository = run {
+        val targetDir = File(application.filesDir, "quran_pages").also { it.mkdirs() }
+        // Automatically migrate any files from previous cacheDir
+        try {
+            application.cacheDir.listFiles()?.forEach { file ->
+                if (file.isFile && (file.name.startsWith("page-") || file.name.startsWith("qcf-") || file.name.startsWith("chapters-") || file.name.startsWith("surah-names-"))) {
+                    val dest = File(targetDir, file.name)
+                    if (!dest.exists()) {
+                        file.copyTo(dest, overwrite = true)
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        PageRepository(targetDir)
+    }
+
+    private var downloadJob: Job? = null
+
+    var downloadedCount by mutableIntStateOf(repository.getCachedPagesCount())
+        private set
+
+    var isDownloading by mutableStateOf(false)
+        private set
+
+    var currentDownloadingPage by mutableIntStateOf(1)
+        private set
+
+    val downloadPercentage: Int
+        get() = (downloadedCount * 100) / 604
+
+    val isFullyDownloaded: Boolean
+        get() = downloadedCount >= 604
+
+    fun startFullDownload() {
+        if (isDownloading) return
+        isDownloading = true
+        downloadJob = viewModelScope.launch {
+            try {
+                repository.downloadAllPages { count, _, pageNum ->
+                    downloadedCount = count
+                    currentDownloadingPage = pageNum
+                }
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                // User cancelled or paused
+            } catch (e: Exception) {
+                android.util.Log.w("QuranDownloader", "Download error", e)
+            } finally {
+                isDownloading = false
+                downloadedCount = repository.getCachedPagesCount()
+            }
+        }
+    }
+
+    fun cancelFullDownload() {
+        downloadJob?.cancel()
+        downloadJob = null
+        isDownloading = false
+        downloadedCount = repository.getCachedPagesCount()
+    }
 }
